@@ -124,6 +124,16 @@
 
     dailyExplanations() { return this.request('GET', '/explanations/daily'); }
     modelAccuracy() { return this.request('GET', '/model/accuracy'); }
+
+    // --- Photo/typed food -> USDA nutrients & standard portions ---
+    /** Identify a food photo (FormData with an "image" field). -> { predictions, needs_confirmation }. */
+    identifyFood(form) { return this.request('POST', '/food/identify', { form }); }
+    /** USDA nutrients + standard portions for a classifier label or typed food name. */
+    foodNutrients(label) { return this.request('GET', '/food/nutrients?label=' + encodeURIComponent(label)); }
+    /** USDA nutrients + standard portions for a specific fdcId (e.g. a "none of these" search pick). */
+    foodNutrientsById(fdcId) { return this.request('GET', '/food/nutrients/' + encodeURIComponent(fdcId)); }
+    /** Up to 10 USDA matches for free text (powers the "none of these, search" fallback). */
+    foodSearch(q) { return this.request('GET', '/food/search?q=' + encodeURIComponent(q)); }
   }
 
   window.ApiError = ApiError;

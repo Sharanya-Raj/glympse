@@ -12,3 +12,8 @@ data/
 *.png
 .env
 backend/.env
+
+# Committed offline data for the photo/typed-food feature. These negate the broad
+# data/ , *.json and *.csv ignores above so the demo works with no network call.
+!backend/food/data/
+!backend/food/data/**
