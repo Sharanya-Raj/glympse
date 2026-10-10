@@ -7,8 +7,8 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -23,6 +23,11 @@ def make_windows(data, min_samples=230):
     data["glucose"] = pd.to_numeric(data["CGM (mg / dl)"], errors="coerce")
     candidates = [c for c in data if c.startswith(("food_", "insulin_", "med_", "csii_"))
                   and not c.endswith("normalized") and c not in ["food_status"]]
+    # CBG is a separate measurement available during the input history only.
+    # Also retain explicit no-food/history-completeness indicators.
+    candidates += [c for c in ["CBG (mg / dl)", "explicit_no_food",
+                    "history_120min_available", "minutes_since_logged_food",
+                    "no_prior_logged_food"] if c in data]
     for col in candidates:
         data[col] = pd.to_numeric(data[col], errors="coerce")
     examples, exclusions = [], []
@@ -69,7 +74,8 @@ def make_windows(data, min_samples=230):
 
 
 def evaluate(frame, predictions):
-    return {"mae": float(mean_absolute_error(frame.target, predictions)),
+    return {"r2": float(r2_score(frame.target, predictions)) if len(frame) > 1 else None,
+            "mae": float(mean_absolute_error(frame.target, predictions)),
             "rmse": float(np.sqrt(mean_squared_error(frame.target, predictions))),
             "day7_baseline_mae": float(mean_absolute_error(frame.target, frame.day7_glucose_mean)),
             "seven_day_baseline_mae": float(mean_absolute_error(frame.target,
@@ -91,13 +97,13 @@ def train(data, output):
     windows["split"] = windows.Patient.map(assignments)
     features = [col for col in windows if col not in META + ["split"]]
     frames = {name: windows[windows.split == name] for name in ["train", "validation", "test"]}
-    # Validate on each person's earliest eligible prediction, including day 8 when present.
-    for name in ["validation", "test"]:
-        frames[name] = frames[name].sort_values("target_day").groupby(["Patient", "Recording"]).head(1)
+    # Evaluate ALL chronological rolling examples in each held-out partition.
+    # Inputs shift by one day: 1–7 -> 8, 2–8 -> 9, 3–9 -> 10, etc.
     best, best_score, best_alpha = None, float("inf"), None
-    for alpha in [1., 10., 100., 1000.]:
+    # Compare ordinary and regularized linear regression on validation only.
+    for alpha in [0., 1., 10., 100., 1000.]:
         model = make_pipeline(SimpleImputer(strategy="median", keep_empty_features=True),
-                              StandardScaler(), Ridge(alpha=alpha))
+                              StandardScaler(), LinearRegression() if alpha == 0 else Ridge(alpha=alpha))
         model.fit(frames["train"][features], frames["train"].target)
         score = mean_absolute_error(frames["validation"].target, model.predict(frames["validation"][features]))
         if score < best_score:
@@ -106,7 +112,17 @@ def train(data, output):
     for name, frame in frames.items():
         result = frame.copy()
         result["predicted_glucose_mean"] = best.predict(frame[features])
+        result["absolute_error"] = (result.target - result.predicted_glucose_mean).abs()
         result.to_csv(output / f"{name}.csv", index=False)
+    rolling = windows.copy()
+    rolling["predicted_glucose_mean"] = best.predict(rolling[features])
+    rolling["absolute_error"] = (rolling.target - rolling.predicted_glucose_mean).abs()
+    rolling.to_csv(output / "rolling_predictions.csv", index=False)
+    patient_metrics = []
+    for (patient, split), frame in rolling.groupby(["Patient", "split"]):
+        patient_metrics.append({"Patient": patient, "split": split, "predictions": len(frame),
+                                **evaluate(frame, frame.predicted_glucose_mean)})
+    pd.DataFrame(patient_metrics).to_csv(output / "patient_metrics.csv", index=False)
     day8 = windows[windows.target_day == 8].copy()
     if not day8.empty:
         day8["predicted_glucose_mean"] = best.predict(day8[features])
@@ -122,20 +138,31 @@ def train(data, output):
     report = {"target": "Next 24-hour mean CGM (mg/dL) from seven prior 24-hour blocks",
               "patient_split": "60/20/20, seed 42; no patient crosses splits",
               "selected_alpha": best_alpha, "metrics": metrics,
+              "selected_model": type(best[-1]).__name__,
+              "feature_count": len(features),
               "patients": {s: int(f.Patient.nunique()) for s, f in frames.items()},
               "examples": {s: len(f) for s, f in frames.items()},
               "day8_recordings": len(day8),
-              "note": "Train predictions are in-sample. Test is held out; validation selects alpha. No day8 food or medications used."}
+              "note": "All eligible rolling windows evaluated. Train predictions are in-sample. Test patients held out; validation selects the linear model. Each forecast uses only its preceding seven days."}
     (output / "metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=BACKEND / "data/5min-glucose-data-prepared.csv")
+    default_data = BACKEND / "data/5min-glucose-data-prepared.csv"
+    if not default_data.exists():
+        default_data = BACKEND / "copies of old data/5min-glucose-data-prepared.csv"
+    parser.add_argument("--data", type=Path, default=default_data)
     parser.add_argument("--output", type=Path, default=BACKEND / "artifacts/regression-ml-glucose")
     args = parser.parse_args()
-    print(json.dumps(train(pd.read_csv(args.data, dtype={"Patient": str, "Recording": str}, low_memory=False), args.output), indent=2))
+    report = train(pd.read_csv(args.data, dtype={"Patient": str, "Recording": str}, low_memory=False), args.output)
+    print(f"Selected linear model: {report['selected_model']} (alpha={report['selected_alpha']})")
+    print("Label: next day's mean CGM in mg/dL. Seven-day rolling input history.")
+    for split, scores in report["metrics"].items():
+        print(f"{split.upper():10s} R2={scores['r2']:.4f}  MAE={scores['mae']:.2f} mg/dL  RMSE={scores['rmse']:.2f} mg/dL")
+    print("R2 is a regression score, not percent accuracy. Only TEST is untouched evaluation.")
+    print(f"Predictions and reports saved to {args.output}")
 
 
 if __name__ == "__main__":

@@ -38,6 +38,10 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(first.iloc[0].target_day, 8)
         self.assertEqual(first.iloc[0].day7_glucose_mean, 106)
         self.assertEqual(first.iloc[0].target, 107)
+        self.assertEqual(first.target_day.tolist(), [8, 9])
+        self.assertEqual(first.iloc[1].day1_glucose_mean, 101)
+        self.assertEqual(first.iloc[1].day7_glucose_mean, 107)
+        self.assertEqual(first.iloc[1].target, 108)
         for column in first.columns.difference(["target"]):
             self.assertEqual(first.iloc[0][column], changed.iloc[0][column])
 

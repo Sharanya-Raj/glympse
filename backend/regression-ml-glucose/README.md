@@ -1,5 +1,76 @@
 # Glucose CSV cleanup and EDA
 
+## Personalized meal-response model (recommended)
+
+```powershell
+python backend/regression-ml-glucose/personalized_model.py
+python backend/regression-ml-glucose/test_personalized.py -v
+```
+
+This is separate from the older daily-average `model.py`. It predicts glucose at
+30, 60, 90 and 120 minutes after a logged meal, by predicting change from baseline
+and adding observed pre-meal CGM. Features are current logged food and pre-meal
+glucose trend, clock time, and prior-24-hour treatment logs. Nutrition remains
+keyword/quantity features, not inferred carbohydrate estimates. Meal information
+is assumed available when predicting; this retrospective evaluation is conditional
+on that assumption. No future treatment or glucose enters an input.
+
+For EACH evaluated patient, a separate population Ridge model is trained on
+OTHER patients' completed first-seven-day meal outcomes. The held-out patient's
+own outcomes never enter that population fit or its imputer/scaler. For day 8,
+a patient-specific regularized residual model and shrunken offset use that
+recording's days 1–7. For day 9, it refits on days 2–8, and so on. Only response
+labels completed strictly before the day's cutoff are eligible for adaptation.
+The adapter is frozen for that day, so earlier same-day outcomes cannot leak into
+later forecasts. Histories never cross recordings. Fewer than five usable history
+meals triggers population-only fallback. Alpha=100 and shrinkage=10 are fixed
+development choices, not tuned on these held-out outcomes. This is leave-one-
+patient-out evaluation, rather than the daily model's 60/20/20 partition.
+
+Before standardizing, inference features are bounded to the population training
+minimum/maximum using a fitted clipping scaler, preventing unbounded linear
+extrapolation for unseen treatment/quantity values. This does not edit raw data
+or guarantee plausibility; external validation and out-of-distribution flags
+remain necessary. The personal adapter uses the same bounded feature space.
+
+Meal examples require at least four pre-meal readings within 30 minutes, a latest
+baseline no older than five minutes, and valid bracketed outcome readings within
+15-minute gaps. Any second logged meal in the next 120 minutes excludes the
+episode. That future-log rule defines a retrospective isolated-meal evaluation
+cohort; deployment cannot know a future snack unless supplied as a plan.
+Targets may be interpolated; no source provenance flag is available in the
+prepared ten-column data to distinguish already-interpolated source readings.
+
+Results under `backend/artifacts/personalized-meal-regression/`:
+
+- `meal_predictions.csv`: each patient/meal/horizon prediction from day 8 onward,
+  pooled prediction, observed-baseline prediction, actual glucose, personal
+  history size and cutoff, and population-only flag.
+- `day8_predictions.csv`: just day 8 meal forecasts (not daily averages).
+- `patient_metrics.csv`: per-patient, per-horizon R², MAE, RMSE, pooled-model MAE,
+  and persistence-baseline MAE. R² is undefined for a single meal and can be
+  unstable for small samples. Errors are mg/dL, not accuracy percentages.
+- `meal_eligibility.csv`: logged/usable meals and duration for every recording,
+  including those without day 8 evaluations.
+- `population_training_audit.csv`: other-patient IDs used for each held-out model.
+- `feature_contributions.csv`: exact additive contributions to predicted glucose
+  CHANGE, from the combined population and personal linear coefficients relative
+  to standardized zero (population-imputed/scaled reference).
+- `patient_feature_importance.csv`: each patient's mean absolute/signed response
+  contributions per horizon. The direct observed-glucose baseline is added outside
+  these response contributions. Rankings explain predictions, not causal effects;
+  correlated inputs and sparse food/treatment variation limit interpretation.
+- `personalized_models.joblib`: population pipeline and individual coefficients,
+  offset, feature schema and cutoff per patient/recording/forecast day. The
+  `predict` function accepts these components and a prepared meal-feature frame;
+  add pre-meal baseline to its returned changes. Load trusted artifacts only.
+- `metrics.json`: evaluation count and pooled/personalized/persistence MAE per
+  horizon. Outcomes overlap across horizons/days, so rows are not independent.
+
+No calibrated uncertainty interval is produced yet. Sparse-history fallback and
+meal counts are reported. Future work should use an independent development cohort
+to tune personalization and calibrate intervals before final external evaluation.
+
 Run `python backend/regression-ml-glucose/eda.py` from the repository root.
 
 Creates `backend/data/5min-glucose-data-cleaned.csv` with exactly the ten requested
@@ -79,11 +150,14 @@ There is no interpolation or future food/medication input. Daily history glucose
 mean/std/min/max and seven-day averages of food/treatment features form the inputs.
 
 Patients are split 60% train / 20% validation / 20% test (seed 42). All overlapping
-windows for a patient stay in that patient's partition. Training can use multiple
-seven-day windows; validation/test use the earliest eligible window per recording.
+windows for a patient stay in that patient's partition. All three partitions use
+every eligible rolling window: days 1–7 predict 8, 2–8 predict 9, 3–9 predict 10.
 Thus these evaluation sets test a shared model on separate patients with seven
 days of their observed history as features; no separate patient model is fitted.
-Ridge alpha is selected on validation only. Imputation and scaling fit train only.
+Ordinary linear regression and Ridge alpha candidates are compared on validation
+only. CBG and available no-food/history indicators also enter the historical
+features. IDs, raw text, target-day CGM, and future factors never enter as features.
+Imputation and scaling fit train only.
 Test data is not used for parameter selection or refitting.
 
 Outputs under `backend/artifacts/regression-ml-glucose/`:
@@ -95,10 +169,19 @@ Outputs under `backend/artifacts/regression-ml-glucose/`:
   only test rows provide untouched performance estimates.
 - `recording_eligibility.csv`: eligibility and excluded recordings.
 - `metrics.json`: MAE/RMSE and day-7/seven-day-mean baseline errors, all mg/dL.
+- `rolling_predictions.csv`: predictions for all eligible forecast days, with split.
+- `patient_metrics.csv`: MAE, RMSE, baseline errors, and R² by patient.
 - `coefficients.csv`: coefficients for standardized features, conditional on others;
   correlated features and shrinkage limit interpretation. These are not causal effects.
 - `linear_regression.joblib`: fitted pipeline and feature schema.
 
-The retained CBG measurements do not enter this model. Suspicious source values
+Historical CBG measurements enter the model. Suspicious source values
 are preserved for review; no unverified correction or nutrient estimation is made.
 Prediction uncertainty and meal-spike forecasting remain separate future tasks.
+
+The command prints R², MAE, and RMSE for all three partitions in the terminal.
+R² is not a classification accuracy percentage; it can be negative. Forecasts
+are next-day means, not five-minute CGM trajectories. The model remains shared
+across patients and fixed during evaluation; it is not retrained after each day.
+The CLI uses `backend/data/5min-glucose-data-prepared.csv` when present, otherwise
+the uploaded copy under `backend/copies of old data/`. Override with `--data`.

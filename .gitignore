@@ -2,5 +2,6 @@ __pycache__/
 *.py[cod]
 .venv/
 backend/data/
+backend/copies of old data/
 backend/reports/
 backend/artifacts/
