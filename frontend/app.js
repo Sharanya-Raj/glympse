@@ -30,7 +30,8 @@
     eye: 'M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
     lock: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4',
     shield: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1zM9 12l2 2 4-4',
-    utensils: 'M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7'
+    utensils: 'M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7',
+    camera: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'
   };
   const icon = (d, size = 20, sw = 2, color = 'currentColor') =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"></path></svg>`;
@@ -81,7 +82,7 @@
     loading: false, health: null, healthError: null,
     status: null, data: null, loadError: null,
     live: null, raw: { readings: [], events: [] }, meals: [], catalog: null,
-    builder: { items: [{ name: 'Rice', amount: 100 }], insulin: { name: '', dose: '' }, tablet: { name: '', dose: '' } },
+    builder: { items: [{ name: 'Rice', amount: 100 }], insulin: { name: '', dose: '' }, tablet: { name: '', dose: '' }, search: null },
     pred: null, predKey: null, predBusy: false, predError: null, confirmBusy: false,
     alts: null, altsBusy: false, altsError: null,
     admin: false,
@@ -286,14 +287,117 @@
   // ---------------------------------------------------------------- meal builder
   const foodInfo = name => (S.catalog ? S.catalog.foods.find(f => f.name === name) : null);
   const unitOf = name => (foodInfo(name) || { unit: 'g' }).unit;
+  // Grams actually fed to the model/macros: USDA-resolved grams when a food was looked up,
+  // otherwise the catalog portion amount. USDA weights are always grams.
+  const itemGrams = i => (i.grams != null ? +i.grams : +i.amount || 0);
+  const itemUnit = i => (i.usda ? 'g' : unitOf(i.name));
   function mealText() {
-    return S.builder.items.filter(i => i.name && i.amount).map(i => `${i.name} ${i.amount} ${unitOf(i.name)}`).join(', ');
+    return S.builder.items.filter(i => i.name && itemGrams(i))
+      .map(i => `${i.name} ${itemGrams(i)} ${itemUnit(i)}`).join(', ');
   }
   function mealRequest(extra = {}) {
     const b = S.builder, req = { dietary_intake: mealText(), ...extra };
     if (b.insulin.name && b.insulin.dose) req.insulin = { name: b.insulin.name, dose: +b.insulin.dose };
     if (b.tablet.name && b.tablet.dose) req.tablet = { name: b.tablet.name, dose: +b.tablet.dose };
     return req;
+  }
+
+  // ---- USDA nutrients: scale per-100 g to the selected portion. null stays "unknown", never 0.
+  const NUTRIENT_FIELDS = ['kcal', 'carbs_g', 'protein_g', 'fat_g', 'fiber_g', 'sugar_g'];
+  function scaleMacros(per100g, grams) {
+    const factor = grams / 100, out = {};
+    for (const key of NUTRIENT_FIELDS) {
+      const v = per100g ? per100g[key] : null;
+      out[key] = (v == null) ? null : (key === 'kcal' ? Math.round(v * factor) : Math.round(v * factor * 10) / 10);
+    }
+    return out;
+  }
+  const showNum = v => (v == null ? 'unknown' : v);
+  // The clean confirmed-food object the rest of the app can consume.
+  function resolvedFoods() {
+    return S.builder.items.filter(i => i.name && itemGrams(i)).map(i => {
+      const grams = itemGrams(i), m = i.usda ? scaleMacros(i.usda.per_100g, grams) : {};
+      return { name: i.name, grams,
+        kcal: m.kcal ?? null, carbs_g: m.carbs_g ?? null, protein_g: m.protein_g ?? null,
+        fat_g: m.fat_g ?? null, fiber_g: m.fiber_g ?? null, sugar_g: m.sugar_g ?? null,
+        fdcId: i.usda ? i.usda.fdcId : null, usda_description: i.usda ? i.usda.description : null };
+    });
+  }
+
+  // ---- Look up USDA nutrients/portions for a row (by classifier label when known, else typed text).
+  async function lookupFood(i) {
+    const item = S.builder.items[i];
+    if (!item) return;
+    const query = item.label || item.name;
+    if (!query || !query.trim()) { item.usda = null; item.grams = null; return render(); }
+    item.lookupBusy = true; item.lookupError = null; render();
+    try {
+      const rec = item.fdcId ? await api.foodNutrientsById(item.fdcId) : await api.foodNutrients(query);
+      item.usda = rec; item.per100 = false;
+      if (rec.default_portion) { item.portionKey = '0'; item.grams = rec.default_portion.grams; }
+      else { item.portionKey = 'per100'; item.grams = 100; }
+    } catch (e) {
+      item.usda = null; item.grams = null; item.lookupError = e;
+    }
+    item.lookupBusy = false; render();
+  }
+
+  function setPortion(i, key) {
+    const item = S.builder.items[i];
+    item.portionKey = key;
+    if (key === 'per100') item.grams = 100;
+    else if (key === 'custom') item.grams = +item.customGrams || item.grams || 100;
+    else if (item.usda && item.usda.portions[+key]) item.grams = item.usda.portions[+key].grams;
+    render();
+  }
+
+  // ---- Photo identification for a row.
+  function pickPhoto(i) {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.setAttribute('capture', 'environment');
+    input.onchange = () => { if (input.files && input.files[0]) identifyPhoto(i, input.files[0]); };
+    input.click();
+  }
+  async function identifyPhoto(i, file) {
+    const item = S.builder.items[i];
+    if (!item) return;
+    item.identifyBusy = true; item.identifyError = null; item.predictions = null; render();
+    try {
+      const form = new FormData(); form.append('image', file);
+      const res = await api.identifyFood(form);
+      item.predictions = res.predictions; item.needsConfirmation = res.needs_confirmation;
+      // High confidence: preselect the top guess but keep the chips visible for correction.
+      if (res.predictions && res.predictions[0]) await choosePrediction(i, res.predictions[0]);
+    } catch (e) {
+      item.identifyError = e;
+    }
+    item.identifyBusy = false; render();
+  }
+  async function choosePrediction(i, pred) {
+    const item = S.builder.items[i];
+    item.name = pred.display_name; item.label = pred.label; item.selectedLabel = pred.label; item.fdcId = null;
+    await lookupFood(i);
+  }
+
+  // ---- "None of these, search" fallback: free-text USDA search, pick a result into the row.
+  async function runFoodSearch(i, query) {
+    S.builder.search = { row: i, query, busy: true, error: null, results: null }; render();
+    try {
+      const res = await api.foodSearch(query);
+      if (S.builder.search && S.builder.search.query === query) S.builder.search.results = res.results;
+    } catch (e) {
+      if (S.builder.search) S.builder.search.error = e;
+    }
+    if (S.builder.search) S.builder.search.busy = false;
+    render();
+  }
+  async function pickSearchResult(i, fdcId, description) {
+    const item = S.builder.items[i];
+    item.name = description; item.label = null; item.selectedLabel = null;
+    item.fdcId = fdcId; item.predictions = null; item.needsConfirmation = false;
+    S.builder.search = null;
+    await lookupFood(i);
   }
   const formKey = () => JSON.stringify(mealRequest());
   function medicationText(med) {
@@ -344,6 +448,11 @@
     S.confirmBusy = true; render();
     try {
       await api.predict(mealRequest({ meal_time: S.pred.meal_time, confirm: true }));
+      // Expose the confirmed meal as one clean object for the rest of the app to plug into.
+      const foods = resolvedFoods(), sum = k => foods.reduce((a, f) => a + (f[k] ?? 0), 0);
+      window.glympseConfirmedMeal = { meal_time: S.pred.meal_time, dietary_intake: mealText(), foods,
+        total: { kcal: sum('kcal'), carbs_g: sum('carbs_g'), protein_g: sum('protein_g'),
+                 fat_g: sum('fat_g'), fiber_g: sum('fiber_g'), sugar_g: sum('sugar_g') } };
       await loadMeals();
       S.pred = null; S.predKey = null; S.alts = null; S.altsError = null;
       S.confirmBusy = false;
@@ -399,7 +508,7 @@
   }
 
   function viewSignin() {
-    return `<main class="signin" style="padding:24px 28px 40px">
+    return `<main class="signin">
   <div style="position:relative;width:300px;max-width:100%;aspect-ratio:1;margin:0 auto">
     <svg viewBox="0 0 300 300" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
       <circle cx="150" cy="150" r="140" style="fill:#121416;stroke:#2a2d31;stroke-width:3"></circle>
@@ -567,11 +676,19 @@
     <div class="sub">${online ? (S.health && S.health.shared_model_available ? 'Prediction model ready' : 'Prediction model missing') : 'Unreachable'}</div></div>
     ${online && S.health && S.health.shared_model_available ? `<span class="synced">${icon(IC.check, 15, 2.2)}Online</span>` : `<span class="synced bad">${icon(IC.x, 15, 2.2)}${online ? 'No model' : 'Offline'}</span>`}</div>`;
 
-    return `<main data-screen-label="Today">${head}${statusRow}${liveBar()}${ringPart}${errorBox(S.loadError)}${phaseCard()}
-  <section aria-label="Glucose around now" style="margin-top:28px">${todayChart()}</section>${stats}${meals}${sources}
-  <div class="divider" style="margin:22px 0"></div>
-  <button class="cta" data-action="go" data-tab="log"><span class="ic">${icon(IC.utensils)}</span><span><b>What if I eat…?</b><small>Pick foods and medication, see the predicted spike before you eat</small></span></button>
-  <p class="note">Wellness insight, not medical advice.</p></main>`;
+    return `<main data-screen-label="Today" class="${ringPart ? 'has-glance' : ''}">${head}${statusRow}${liveBar()}
+  <div class="today-ring">${ringPart}</div><div class="today-alert">${errorBox(S.loadError)}</div>
+  <div class="today-phase">${phaseCard()}</div>
+  <section class="today-chart" aria-label="Glucose around now">${todayChart()}</section>
+  <div class="today-stats">${stats}</div>
+  <div class="today-bottom">
+    <div class="today-meals">${meals}</div>
+    <div class="today-aside">${sources}
+      <div class="divider" style="margin:22px 0"></div>
+      <button class="cta" data-action="go" data-tab="log"><span class="ic">${icon(IC.utensils)}</span><span><b>What if I eat…?</b><small>Pick foods and medication, see the predicted spike before you eat</small></span></button>
+      <p class="note">Wellness insight, not medical advice.</p>
+    </div>
+  </div></main>`;
   }
 
   function predictionCard() {
@@ -656,15 +773,91 @@
   const options = (values, selected, label) => values.map(v =>
     `<option value="${esc(v)}" ${String(v) === String(selected) ? 'selected' : ''}>${esc(label ? label(v) : v)}</option>`).join('');
 
-  function foodRow(item, i) {
-    const foods = S.catalog.foods, info = foodInfo(item.name);
-    const portions = info ? [...new Set([...info.portions, item.amount].filter(Boolean))].sort((p, q) => p - q) : [item.amount];
-    const names = info ? foods.map(f => f.name) : [item.name, ...foods.map(f => f.name)];
-    return `<div class="food-row">
-    <select class="input" data-item="${i}" data-part="name" aria-label="Food ${i + 1}">${options(names, item.name)}</select>
-    <select class="input portion" data-item="${i}" data-part="amount" aria-label="Portion ${i + 1}">${options(portions, item.amount, p => `${p} ${unitOf(item.name)}`)}</select>
-    <button class="icon-btn sm" data-action="remove-food" data-index="${i}" aria-label="Remove food ${i + 1}" ${S.builder.items.length < 2 ? 'disabled' : ''}>${icon(IC.x, 16)}</button>
+  const photoErrorText = e => (e && e.status === 503)
+    ? "Photo recognition isn't set up on this server yet — type the food name instead."
+    : ((e && e.message) || 'Could not identify the photo.');
+  const lookupErrorText = e => (e && e.status === 404)
+    ? 'No USDA match for that food — try the search below.'
+    : ((e && e.message) || 'USDA lookup failed.');
+
+  function portionSelect(item, i) {
+    if (item.usda) {
+      const opts = item.usda.portions.map((p, idx) =>
+        `<option value="${idx}" ${String(item.portionKey) === String(idx) ? 'selected' : ''}>${esc(p.label)} (${p.grams} g)</option>`).join('');
+      const extra = `<option value="per100" ${item.portionKey === 'per100' ? 'selected' : ''}>Per 100 g</option>
+        <option value="custom" ${item.portionKey === 'custom' ? 'selected' : ''}>Custom…</option>`;
+      return `<select class="input portion" data-item="${i}" data-part="portion" aria-label="Portion ${i + 1}">${opts}${extra}</select>`;
+    }
+    const info = foodInfo(item.name);
+    const portions = info ? [...new Set([...info.portions, item.amount].filter(Boolean))].sort((p, q) => p - q) : (item.amount ? [item.amount] : []);
+    const opts = options(portions, item.portionKey === 'custom' ? '' : item.amount, p => `${p} ${unitOf(item.name)}`);
+    return `<select class="input portion" data-item="${i}" data-part="amount" aria-label="Portion ${i + 1}">${opts}<option value="custom" ${item.portionKey === 'custom' ? 'selected' : ''}>Custom…</option></select>`;
+  }
+
+  function nutritionCard(item) {
+    const u = item.usda, dp = u.default_portion;
+    const grams = item.per100 ? 100 : itemGrams(item);
+    const m = scaleMacros(u.per_100g, grams);
+    const standard = dp
+      ? `USDA standard portion: <b>${esc(dp.label)} (${dp.grams} g)</b>`
+      : `USDA lists no standard portion for this food — showing <b>per 100 g</b>`;
+    const macros = `${showNum(m.kcal)} kcal · Carbs ${showNum(m.carbs_g)} g · Protein ${showNum(m.protein_g)} g · Fat ${showNum(m.fat_g)} g`;
+    const notes = [];
+    if (u.kcal_estimated) notes.push('Calories estimated from macros.');
+    if (u.missing && u.missing.length) notes.push('USDA is missing: ' + u.missing.join(', ') + '.');
+    return `<div class="card" style="margin-top:8px;padding:14px 16px">
+    <div class="small" style="color:var(--teal);font-weight:700">${standard}</div>
+    <div style="margin-top:4px;font-size:13px;color:var(--muted-2)">Compare this to what's on your plate.</div>
+    <div style="margin-top:10px;font-size:15px">${item.per100 ? '<span class="muted small">per 100 g · </span>' : `<span class="muted small">for ${grams} g · </span>`}${macros}</div>
+    <div class="row" style="margin-top:10px;gap:12px;align-items:center">
+      <button type="button" class="link-btn ghost" data-action="toggle-per100" data-index="${item._i}">${item.per100 ? 'Show selected portion' : 'Show per 100 g'}</button>
+      <span class="small muted">Source: USDA ${esc(u.source || '')}</span></div>
+    ${notes.length ? `<div class="hint">${esc(notes.join(' '))}</div>` : ''}
   </div>`;
+  }
+
+  function searchBox(i) {
+    const s = S.builder.search;
+    return `<div class="card" style="margin-top:8px;padding:14px 16px">
+    <div class="field-box"><input type="text" data-search-input="${i}" placeholder="Search USDA foods…" value="${esc(s.query || '')}" aria-label="Search USDA foods">
+      <button type="button" data-action="run-search" data-index="${i}" aria-label="Search">${icon(IC.list, 18)}</button></div>
+    ${s.busy ? '<div class="hint" role="status">Searching USDA…</div>' : ''}
+    ${s.error ? `<div class="hint" style="color:var(--coral)">${esc(s.error.message || 'Search failed')}</div>` : ''}
+    ${s.results ? (s.results.length
+      ? `<div style="margin-top:8px">${s.results.map(r => `<button type="button" class="link-btn ghost" style="display:block;width:100%;text-align:left;height:auto;margin-top:6px;padding:10px 12px" data-action="pick-search" data-index="${i}" data-fdcid="${r.fdcId}" data-desc="${esc(r.description)}">${esc(r.description)} <span class="small muted">· ${esc(r.source)}</span></button>`).join('')}</div>`
+      : '<div class="hint">No matches. Try a different word.</div>') : ''}
+  </div>`;
+  }
+
+  function foodDetail(item, i) {
+    let html = '';
+    if (item.identifyBusy) html += `<div class="hint" role="status">Identifying photo…</div>`;
+    if (item.identifyError) html += `<div class="hint" style="color:var(--coral)">${esc(photoErrorText(item.identifyError))}</div>`;
+    if (item.predictions && item.predictions.length) {
+      const top3 = item.predictions.slice(0, 3);
+      html += `<div class="chips" role="group" aria-label="Photo guesses">
+      ${top3.map(p => `<button type="button" data-action="choose-pred" data-index="${i}" data-label="${esc(p.label)}" data-name="${esc(p.display_name)}" ${item.selectedLabel === p.label ? 'aria-pressed="true" style="border-color:var(--teal);color:var(--teal)"' : ''}>${esc(p.display_name)} · ${Math.round(p.confidence * 100)}%</button>`).join('')}
+      <button type="button" class="link-btn ghost" data-action="search-toggle" data-index="${i}">None of these, search</button></div>
+      ${item.needsConfirmation ? `<div class="hint">Not fully sure — tap the right food, or search.</div>` : ''}`;
+    }
+    if (item.portionKey === 'custom') {
+      html += `<div class="food-row" style="margin-top:6px"><input class="input" type="number" min="1" max="5000" step="1" inputmode="numeric" data-item="${i}" data-part="custom-grams" placeholder="Grams on your plate" value="${esc(item.customGrams ?? item.grams ?? '')}" aria-label="Custom grams ${i + 1}"></div>`;
+    }
+    if (item.lookupBusy) html += `<div class="hint" role="status">Looking up USDA nutrition…</div>`;
+    else if (item.lookupError) html += `<div class="hint" style="color:var(--coral)">${esc(lookupErrorText(item.lookupError))} You can still set grams manually.</div>`;
+    else if (item.usda) { item._i = i; html += nutritionCard(item); }
+    if (S.builder.search && S.builder.search.row === i) html += searchBox(i);
+    return html;
+  }
+
+  function foodRow(item, i) {
+    const cam = `Identify food ${i + 1} from a photo`;
+    return `<div class="food-row">
+    <input class="input" list="glympse-foods" data-item="${i}" data-part="name" autocomplete="off" placeholder="Type a food, or use the camera" value="${esc(item.name || '')}" aria-label="Food ${i + 1}">
+    <button class="icon-btn sm" data-action="identify-photo" data-index="${i}" aria-label="${cam}" title="${cam}" ${item.identifyBusy ? 'disabled' : ''}>${icon(IC.camera, 18)}</button>
+    ${portionSelect(item, i)}
+    <button class="icon-btn sm" data-action="remove-food" data-index="${i}" aria-label="Remove food ${i + 1}" ${S.builder.items.length < 2 ? 'disabled' : ''}>${icon(IC.x, 16)}</button>
+  </div>${foodDetail(item, i)}`;
   }
 
   function medRow(kind) {
@@ -688,19 +881,28 @@
     const note = !st.ready_for_day8 ? `<div class="banner"><div class="eyebrow">NOT ENOUGH DATA</div><p>Forecasts need each of the first 7 days to have at least 230 CGM readings.</p></div>`
       : before8 ? `<div class="banner"><div class="eyebrow">DAY 8 HASN'T STARTED</div><p>Forecasts start at ${clock(D.day8)} on day 8.</p></div>` : '';
     const canConfirm = S.pred && S.predKey === formKey() && !S.confirmBusy;
+    const forecast = predictionCard();
     return `<main data-screen-label="What if">
-  <div class="eyebrow">WHAT IF I EAT…</div><h1 class="title">Predict before you eat.</h1>${note}
-  <div class="banner"><div class="eyebrow">MEAL TIME = NOW</div><p data-live-clock>${esc(liveClockText())}</p></div>
+  <div class="log-intro">
+    <div class="eyebrow">WHAT IF I EAT…</div><h1 class="title">Predict before you eat.</h1>${note}
+    <div class="banner"><div class="eyebrow">MEAL TIME = NOW</div><p data-live-clock>${esc(liveClockText())}</p></div>
+  </div>
+  <div class="log-form">
   <div class="field"><label>Foods and portions</label>
+    <datalist id="glympse-foods">${S.catalog.foods.map(f => `<option value="${esc(f.name)}"></option>`).join('')}</datalist>
     ${S.builder.items.map(foodRow).join('')}
-    <button class="link-btn" style="margin-top:10px" data-action="add-food">${icon(IC.plus, 15)} Add food</button></div>
+    <button class="link-btn" style="margin-top:10px" data-action="add-food">${icon(IC.plus, 15)} Add food</button>
+    <div class="hint">Type a food or tap ${icon(IC.camera, 13)} to identify it from a photo. We pull USDA's standard portion so you can compare it to your plate.</div></div>
   <div class="field"><label>Insulin taken with this meal</label>${medRow('insulin')}</div>
   <div class="field"><label>Tablet taken with this meal</label>${medRow('tablet')}
     <div class="hint">Medication is fed to the model exactly like doses in your record. It's for exploring the forecast, not dosing advice.</div></div>
   <button class="btn secondary" data-action="predict" ${S.predBusy || before8 ? 'disabled' : ''}>${S.predBusy ? 'Predicting…' : 'See what happens (what if)'}</button>
-  ${predictionCard()}
+  </div>
+  <div class="log-result">${forecast || `<div class="log-placeholder"><div class="eyebrow">FORECAST</div><p>Check a meal and the predicted glucose curve shows up here, beside the foods you picked.</p></div>`}</div>
+  <div class="log-foot">
   <button class="btn" data-action="save-meal" ${canConfirm ? '' : 'disabled'}>${S.confirmBusy ? 'Saving…' : 'I ate this: confirm meal'}</button>
-  <p class="note">A what-if is only a prediction and is not saved. Confirming records the meal with its forecast so you can watch it against your real glucose. Wellness insight, not medical advice.</p>
+  <p class="note">A what-if is only a prediction and is not saved. Confirming records the meal with its forecast so you can watch it against your real glucose. Photo recognition knows 101 common dishes — type the food or search if yours isn't found. A photo can't tell portion size, so we show USDA's standard portion to compare against your plate. Wellness insight, not medical advice.</p>
+  </div>
 </main>`;
   }
 
@@ -769,14 +971,22 @@
     const recent = D ? D.treatments.slice(-12).reverse() : [];
     const forecasts = D ? savedMeals().filter(m => m.day === D.lastDay) : [];
     return `<main data-screen-label="Medication">
+  <div class="meds-intro">
   <div class="eyebrow">MEDICATION</div><h1 class="title" style="margin-bottom:6px">What did you take?</h1>
   <p style="margin:0 0 18px;font-size:15px;line-height:1.5;color:var(--muted)">Forecasts include insulin and tablets from your record in the 24 hours before a meal, plus anything you pick in the What if screen.</p>
+  </div>
+  <div class="meds-cols">
+  <section>
   <h2 class="section tight">Recorded so far</h2>
   ${recent.length ? recent.map(x => `<div class="row"><span class="thumb pill-ic">${icon(IC.pill)}</span><div class="grow"><div class="name" style="font-size:15px">${esc(x.text)}</div>
     <div class="sub">Day ${x.day} · ${shortDate(x.t)}, ${clock(x.t)}</div></div></div>`).join('') : `<p class="empty">${D ? 'No insulin or medication entries recorded yet.' : 'No CGM record on this account.'}</p>`}
+  </section>
+  <section>
   <h2 class="section tight">Confirmed meals today</h2>
   <p style="margin:0;font-size:14px;line-height:1.5;color:var(--muted-2)">${forecasts.length ? 'Forecast 30, 60, 90 and 120 minutes after each meal, with your real reading once the clock gets there.' : 'Confirm a meal in What if to see its forecast here.'}</p>
   ${forecastCards(forecasts)}
+  </section>
+  </div>
   <p class="note">Wellness insight, not medical advice. Don't change medication without your care team.</p>
 </main>`;
   }
@@ -801,16 +1011,17 @@
     const id = (S.user || '').replace(/^patient/, '');
     return `<main data-screen-label="Profile">
   <header class="top center">${brand()}${roleChip()}</header>
-  <div class="eyebrow" style="margin-top:28px">YOUR PROFILE</div><h1 class="title lg">Made for you.</h1>
-  <div style="display:flex;flex-direction:column;align-items:center;margin-top:24px">
+  <div class="profile-intro"><div class="eyebrow" style="margin-top:28px">YOUR PROFILE</div><h1 class="title lg">Made for you.</h1></div>
+  <div class="profile-hero" style="display:flex;flex-direction:column;align-items:center;margin-top:24px">
     <div class="avatar">${icon(IC.user, 44, 1.8)}<span class="heart">${icon(IC.heart, 15, 2.2)}</span></div>
     <div class="num" style="font-size:28px;margin-top:18px">${esc(S.user)}</div>
     <div style="font-size:16px;color:var(--muted-2);margin-top:4px">${S.admin ? 'Administrator account' : 'Patient account'}</div>
   </div>
+  <div class="profile-body">
   <div class="profile-stats"><div><div class="num" style="color:var(--teal)">${D ? D.lastDay : 0}</div><div class="lbl">Current day</div></div>
     <div><div class="num" style="color:var(--coral)">${week.avg ?? '–'}</div><div class="lbl">Avg mg/dL</div></div>
     <div><div class="num" style="color:var(--lilac)">${week.tir ?? '–'}${week.tir == null ? '' : '%'}</div><div class="lbl">In range</div></div></div>
-  <p class="hint" style="text-align:center">Average and time in range (70–180) over your first 7 days.</p>
+  <p class="hint profile-hint">Average and time in range (70–180) over your first 7 days.</p>
 
   <h2 class="display">Personal details</h2>
   ${st ? `<dl class="kv"><dt>Username</dt><dd>${esc(S.user)}</dd>
@@ -823,13 +1034,14 @@
     : '<p class="empty">No CGM record on this account.</p>'}
 
   <button class="btn ghost" style="margin-top:28px;height:60px;border-radius:20px;justify-content:flex-start;padding:0 20px;font-weight:600" data-action="signout">${icon(IC.signout)}<span style="flex:1;text-align:left">Sign out</span>${icon(IC.chevron, 18)}</button>
+  </div>
 </main>`;
   }
 
   function viewNav() {
     const item = (id, label, ic) => `<button class="tab" data-action="go" data-tab="${id}" ${S.tab === id ? 'aria-current="page"' : ''}><span>${icon(ic, 22, 1.9)}</span>${label}</button>`;
-    return `<nav class="main" aria-label="Main">${item('today', 'Today', IC.today)}${item('calendar', 'Calendar', IC.cal)}
-  <div class="fab-wrap"><button class="fab" data-action="go" data-tab="log" aria-label="Log a meal">${icon(IC.plus, 30, 2.4)}</button></div>
+    return `<nav class="main" aria-label="Main"><div class="nav-brand">${brand(26)}</div>${item('today', 'Today', IC.today)}${item('calendar', 'Calendar', IC.cal)}
+  <div class="fab-wrap"><button class="fab" data-action="go" data-tab="log" aria-label="Log a meal" ${S.tab === 'log' ? 'aria-current="page"' : ''}>${icon(IC.plus, 30, 2.4)}<span class="fab-label">What if</span></button></div>
   ${item('meds', 'Meds', IC.pill)}${item('profile', 'Profile', IC.user)}</nav>`;
   }
 
@@ -857,8 +1069,23 @@
       const next = root.querySelector('#gl-pw'); next.value = value; next.focus();
     }
     else if (a === 'signout') signOut();
-    else if (a === 'add-food') { S.builder.items.push({ name: S.catalog.foods[0].name, amount: S.catalog.foods[0].portions[0] }); render(); }
-    else if (a === 'remove-food') { S.builder.items.splice(+el.dataset.index, 1); render(); }
+    else if (a === 'add-food') { S.builder.items.push({ name: '', amount: 100 }); render(); }
+    else if (a === 'remove-food') { S.builder.items.splice(+el.dataset.index, 1); if (S.builder.search) S.builder.search = null; render(); }
+    else if (a === 'identify-photo') { pickPhoto(+el.dataset.index); }
+    else if (a === 'choose-pred') { choosePrediction(+el.dataset.index, { label: el.dataset.label, display_name: el.dataset.name }); }
+    else if (a === 'toggle-per100') { const it = S.builder.items[+el.dataset.index]; it.per100 = !it.per100; render(); }
+    else if (a === 'search-toggle') {
+      const i = +el.dataset.index;
+      S.builder.search = (S.builder.search && S.builder.search.row === i)
+        ? null : { row: i, query: S.builder.items[i].name || '', busy: false, error: null, results: null };
+      render();
+    }
+    else if (a === 'run-search') {
+      const input = root.querySelector(`[data-search-input="${el.dataset.index}"]`);
+      const q = input ? input.value.trim() : '';
+      if (q) runFoodSearch(+el.dataset.index, q);
+    }
+    else if (a === 'pick-search') { pickSearchResult(+el.dataset.index, +el.dataset.fdcid, el.dataset.desc); }
     else if (a === 'predict') predict();
     else if (a === 'try-alt') tryAlternative(el.dataset.value);
     else if (a === 'save-meal') confirmMeal();
@@ -875,12 +1102,19 @@
     else if (d.item !== undefined) {
       const item = S.builder.items[+d.item];
       if (d.part === 'name') {
-        // New food: keep the portion if it's offered for that food, otherwise its most typical one.
-        const info = foodInfo(t.value);
-        item.name = t.value;
-        if (info && !info.portions.includes(item.amount)) item.amount = info.portions[Math.floor(info.portions.length / 2)];
-      } else item.amount = +t.value;
-      render();
+        // A typed/chosen food: reset any photo/USDA state and look it up fresh in USDA.
+        item.name = t.value; item.label = null; item.selectedLabel = null; item.fdcId = null;
+        item.predictions = null; item.needsConfirmation = false; item.portionKey = null;
+        lookupFood(+d.item);  // async; re-renders with USDA portions + macros
+      } else if (d.part === 'portion') {
+        setPortion(+d.item, t.value);
+      } else if (d.part === 'custom-grams') {
+        item.customGrams = t.value; item.grams = +t.value || null; render();
+      } else if (d.part === 'amount') {
+        if (t.value === 'custom') { item.portionKey = 'custom'; item.grams = itemGrams(item); item.customGrams = item.grams; }
+        else { item.amount = +t.value; item.grams = null; item.portionKey = null; }
+        render();
+      }
     } else if (d.med) {
       const med = S.builder[d.med];
       if (d.part === 'name') {
@@ -898,6 +1132,13 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetDay) { S.sheetDay = null; render(); } });
 
   api.onUnauthorized = () => { resetSession(); S.signinError = 'Your sign-in expired. Please sign in again.'; render(); };
+
+  // The confirmed meal as a clean object the rest of the app can plug into:
+  // { name, grams, kcal, carbs_g, protein_g, fat_g, fiber_g, sugar_g } per food, plus totals.
+  window.glympse = {
+    getConfirmedMeal: () => window.glympseConfirmedMeal || null,
+    getCurrentFoods: () => resolvedFoods(),
+  };
 
   // ---------------------------------------------------------------- boot
   render();

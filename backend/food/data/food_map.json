@@ -1,0 +1,472 @@
+{
+  "apple_pie": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Pie, apple",
+    "fdcId": 2707995
+  },
+  "baby_back_ribs": {
+    "dataType": "SR Legacy",
+    "description": "Beef, rib, back ribs, bone-in, separable lean and fat, trimmed to 0\" fat, choice, raw",
+    "fdcId": 173405
+  },
+  "baklava": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Baklava",
+    "fdcId": 2708044
+  },
+  "beef_carpaccio": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Beef burgundy",
+    "fdcId": 2706371
+  },
+  "beef_tartare": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Steak tartare",
+    "fdcId": 2706394
+  },
+  "beet_salad": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Beets, pickled",
+    "fdcId": 2710071
+  },
+  "beignets": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Beignet",
+    "fdcId": 2708071
+  },
+  "bibimbap": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Bibimbap, Korean",
+    "fdcId": 2708950
+  },
+  "bread_pudding": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Pudding, bread",
+    "fdcId": 2705680
+  },
+  "breakfast_burrito": {
+    "dataType": "SR Legacy",
+    "description": "Fast foods, breakfast burrito, with egg, cheese, and sausage",
+    "fdcId": 170787
+  },
+  "bruschetta": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Bruschetta",
+    "fdcId": 2707652
+  },
+  "caesar_salad": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Caesar salad, with romaine, no dressing",
+    "fdcId": 2709591
+  },
+  "cannoli": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Pastry, Italian, with cheese",
+    "fdcId": 2708052
+  },
+  "caprese_salad": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Salad dressing, NFS, for salads",
+    "fdcId": 2710195
+  },
+  "carrot_cake": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Cake or cupcake, carrot",
+    "fdcId": 2707859
+  },
+  "ceviche": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Ceviche",
+    "fdcId": 2706463
+  },
+  "cheese_plate": {
+    "dataType": "SR Legacy",
+    "description": "CRACKER BARREL, macaroni n' cheese plate, from kid's menu",
+    "fdcId": 167671
+  },
+  "cheesecake": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Cheesecake, chocolate",
+    "fdcId": 2707863
+  },
+  "chicken_curry": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Chicken curry",
+    "fdcId": 2706437
+  },
+  "chicken_quesadilla": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Quesadilla, chicken",
+    "fdcId": 2708593
+  },
+  "chicken_wings": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Chicken wing, stewed",
+    "fdcId": 2706061
+  },
+  "chocolate_cake": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Snack cake, chocolate",
+    "fdcId": 2707873
+  },
+  "chocolate_mousse": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Mousse",
+    "fdcId": 2705698
+  },
+  "churros": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Churros",
+    "fdcId": 2708070
+  },
+  "clam_chowder": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Soup, Manhattan clam chowder",
+    "fdcId": 2707138
+  },
+  "club_sandwich": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Club sandwich on wheat",
+    "fdcId": 2706995
+  },
+  "crab_cakes": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Crab, cake",
+    "fdcId": 2706549
+  },
+  "creme_brulee": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Creme brulee",
+    "fdcId": 2705684
+  },
+  "cup_cakes": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Cake, fruit cake",
+    "fdcId": 2707875
+  },
+  "deviled_eggs": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Egg, deviled",
+    "fdcId": 2707181
+  },
+  "donuts": {
+    "dataType": "SR Legacy",
+    "description": "Doughnuts, cake-type, chocolate, sugared or glazed",
+    "fdcId": 174993
+  },
+  "dumplings": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Dumpling, no meat",
+    "fdcId": 2708344
+  },
+  "edamame": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Edamame, cooked",
+    "fdcId": 2707436
+  },
+  "eggs_benedict": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Egg, Benedict",
+    "fdcId": 2707180
+  },
+  "escargots": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Escargot",
+    "fdcId": 2706368
+  },
+  "falafel": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Falafel",
+    "fdcId": 2707408
+  },
+  "filet_mignon": {
+    "dataType": "SR Legacy",
+    "description": "McDONALD'S, FILET-O-FISH",
+    "fdcId": 170319
+  },
+  "fish_and_chips": {
+    "dataType": "SR Legacy",
+    "description": "Fish, fish sticks, frozen, prepared",
+    "fdcId": 174195
+  },
+  "foie_gras": {
+    "dataType": "SR Legacy",
+    "description": "Pate de foie gras, canned (goose liver pate), smoked",
+    "fdcId": 171100
+  },
+  "french_fries": {
+    "dataType": "SR Legacy",
+    "description": "APPLEBEE'S, french fries",
+    "fdcId": 169009
+  },
+  "french_onion_soup": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Soup, French onion",
+    "fdcId": 2710108
+  },
+  "french_toast": {
+    "dataType": "Survey (FNDDS)",
+    "description": "French toast sticks",
+    "fdcId": 2708338
+  },
+  "fried_calamari": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Calamari, fried",
+    "fdcId": 2706334
+  },
+  "fried_rice": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Rice, fried, meatless",
+    "fdcId": 2708951
+  },
+  "frozen_yogurt": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Frozen yogurt sandwich",
+    "fdcId": 2705456
+  },
+  "garlic_bread": {
+    "dataType": "SR Legacy",
+    "description": "Garlic bread, frozen",
+    "fdcId": 167939
+  },
+  "gnocchi": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Gnocchi, cheese",
+    "fdcId": 2708721
+  },
+  "greek_salad": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Greek Salad, no dressing",
+    "fdcId": 2709830
+  },
+  "grilled_cheese_sandwich": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Grilled cheese sandwich, NFS",
+    "fdcId": 2705801
+  },
+  "grilled_salmon": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Fish, salmon, grilled",
+    "fdcId": 2706287
+  },
+  "guacamole": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Guacamole, NFS",
+    "fdcId": 2709307
+  },
+  "hamburger": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Hamburger (McDonalds)",
+    "fdcId": 2706924
+  },
+  "hot_and_sour_soup": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Soup, hot and sour",
+    "fdcId": 2707136
+  },
+  "hot_dog": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Hot dog, vegetarian",
+    "fdcId": 2707470
+  },
+  "huevos_rancheros": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Huevos rancheros",
+    "fdcId": 2707191
+  },
+  "hummus": {
+    "dataType": "SR Legacy",
+    "description": "Hummus, commercial",
+    "fdcId": 174289
+  },
+  "ice_cream": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Ice cream cake",
+    "fdcId": 2707877
+  },
+  "lasagna": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Lasagna with meat",
+    "fdcId": 2708750
+  },
+  "lobster_bisque": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Soup, bisque",
+    "fdcId": 2707140
+  },
+  "lobster_roll_sandwich": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Lobster",
+    "fdcId": 2706349
+  },
+  "macaroni_and_cheese": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Macaroni or noodles with cheese",
+    "fdcId": 2708811
+  },
+  "miso_soup": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Soup, miso or tofu",
+    "fdcId": 2707455
+  },
+  "mussels": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Mussels",
+    "fdcId": 2706350
+  },
+  "nachos": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Nachos, chicken",
+    "fdcId": 2708580
+  },
+  "onion_rings": {
+    "dataType": "SR Legacy",
+    "description": "DENNY'S, onion rings",
+    "fdcId": 169844
+  },
+  "oysters": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Dressing with oysters",
+    "fdcId": 2708747
+  },
+  "pad_thai": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Pad Thai with chicken",
+    "fdcId": 2708806
+  },
+  "paella": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Paella with seafood",
+    "fdcId": 2706711
+  },
+  "pancakes": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Chinese pancake",
+    "fdcId": 2708343
+  },
+  "peking_duck": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Duck, Peking",
+    "fdcId": 2706141
+  },
+  "pho": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Soup, pho, with meat",
+    "fdcId": 2707124
+  },
+  "pizza": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Dessert pizza",
+    "fdcId": 2708008
+  },
+  "pork_chop": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Pork, chop, stuffed",
+    "fdcId": 2705872
+  },
+  "prime_rib": {
+    "dataType": "SR Legacy",
+    "description": "Beef, rib, small end (ribs 10-12), separable lean and fat, trimmed to 1/8\" fat, prime, raw",
+    "fdcId": 169514
+  },
+  "pulled_pork_sandwich": {
+    "dataType": "SR Legacy",
+    "description": "Pulled pork in barbecue sauce",
+    "fdcId": 173344
+  },
+  "ramen": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Ramen bowl with beef",
+    "fdcId": 2709154
+  },
+  "ravioli": {
+    "dataType": "SR Legacy",
+    "description": "Ravioli, cheese-filled, canned",
+    "fdcId": 173328
+  },
+  "red_velvet_cake": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Cake or cupcake, red velvet",
+    "fdcId": 2707884
+  },
+  "risotto": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Rice, white, with cheese and/or cream based sauce, fat added",
+    "fdcId": 2709094
+  },
+  "samosa": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Samosa",
+    "fdcId": 2708730
+  },
+  "sashimi": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Fish, salmon, raw",
+    "fdcId": 2706284
+  },
+  "scallops": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Scallops, fried",
+    "fdcId": 2706359
+  },
+  "seaweed_salad": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Seaweed, dried",
+    "fdcId": 2709988
+  },
+  "shrimp_and_grits": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Grits, NFS",
+    "fdcId": 2708363
+  },
+  "spaghetti_bolognese": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Spaghetti sauce",
+    "fdcId": 2709745
+  },
+  "spaghetti_carbonara": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Spaghetti sauce",
+    "fdcId": 2709745
+  },
+  "spring_rolls": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Roll, multigrain",
+    "fdcId": 2707782
+  },
+  "steak": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Pepper steak",
+    "fdcId": 2706747
+  },
+  "strawberry_shortcake": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Cake, strawberry shortcake",
+    "fdcId": 2707896
+  },
+  "sushi": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Sushi, NFS",
+    "fdcId": 2708959
+  },
+  "tacos": {
+    "dataType": "SR Legacy",
+    "description": "TACO BELL, Taco Salad",
+    "fdcId": 170736
+  },
+  "tiramisu": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Tiramisu",
+    "fdcId": 2705702
+  },
+  "tuna_tartare": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Steak tartare",
+    "fdcId": 2706394
+  },
+  "waffles": {
+    "dataType": "Survey (FNDDS)",
+    "description": "Waffle, chocolate",
+    "fdcId": 2708327
+  }
+}

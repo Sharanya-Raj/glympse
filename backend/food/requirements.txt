@@ -1,0 +1,13 @@
+# Extra dependencies for the photo/typed-food feature.
+#
+#   USDA nutrition + typed food:  httpx + Pillow (already in the backend/runtime deps).
+#   Photo identification:         torch + transformers (heavy; optional).
+#
+# The core app runs without the photo model installed: POST /food/identify returns a clean 503
+# and the typed-food + USDA flow still works. Install this only to enable photo identification.
+# First run downloads the nateraw/food model (~500 MB) from the Hugging Face hub.
+
+Pillow>=10,<13
+httpx>=0.28,<1
+transformers>=4.40,<5
+torch>=2.2

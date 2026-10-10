@@ -1,0 +1,412 @@
+label,display_name,rank,fdcId,description,dataType,score
+apple_pie,apple pie,1,2707995,"Pie, apple",Survey (FNDDS),610.02826
+apple_pie,apple pie,2,2709219,Apple pie filling,Survey (FNDDS),583.47034
+apple_pie,apple pie,3,2707996,"Pie, apple, fast food",Survey (FNDDS),536.81946
+apple_pie,apple pie,4,168822,"Pie fillings, apple, canned",SR Legacy,512.8564
+apple_pie,apple pie,5,175012,"Pie, apple, prepared from recipe",SR Legacy,475.03934
+baby_back_ribs,baby back ribs,1,173405,"Beef, rib, back ribs, bone-in, separable lean and fat, trimmed to 0"" fat, choice, raw",SR Legacy,558.77893
+baby_back_ribs,baby back ribs,2,173406,"Beef, rib, back ribs, bone-in, separable lean and fat, trimmed to 0"" fat, select, raw",SR Legacy,558.77893
+baby_back_ribs,baby back ribs,3,172147,"Beef, rib, back ribs, bone-in, separable lean only, trimmed to 0"" fat, choice, raw",SR Legacy,558.77893
+baby_back_ribs,baby back ribs,4,173384,"Beef, rib, back ribs, bone-in, separable lean only, trimmed to 0"" fat, select, raw",SR Legacy,558.77893
+baby_back_ribs,baby back ribs,5,172169,"Beef, rib, back ribs, bone-in, separable lean and fat, trimmed to 0"" fat, all grades, raw",SR Legacy,537.07086
+baklava,baklava,1,2708044,Baklava,Survey (FNDDS),1718.0731
+beef_carpaccio,beef carpaccio,1,2706371,Beef burgundy,Survey (FNDDS),283.14868
+beef_carpaccio,beef carpaccio,2,170602,"Beef, cured, corned beef, canned",SR Legacy,282.08423
+beef_carpaccio,beef carpaccio,3,2706592,"Stew, beef",Survey (FNDDS),278.09418
+beef_carpaccio,beef carpaccio,4,2705854,"Beef, ground",Survey (FNDDS),270.8039
+beef_carpaccio,beef carpaccio,5,170200,"Beef, cured, corned beef, brisket, cooked",SR Legacy,270.42554
+beef_tartare,beef tartare,1,2706394,Steak tartare,Survey (FNDDS),563.55927
+beef_tartare,beef tartare,2,2710173,Tartar sauce,Survey (FNDDS),563.55927
+beef_tartare,beef tartare,3,175041,"Leavening agents, cream of tartar",SR Legacy,473.80164
+beef_tartare,beef tartare,4,171826,"Sauce, tartar, ready-to-serve",SR Legacy,473.80164
+beef_tartare,beef tartare,5,170296,"Fast foods, fish sandwich, with tartar sauce",SR Legacy,408.74493
+beet_salad,beet salad,1,2710071,"Beets, pickled",Survey (FNDDS),477.92883
+beet_salad,beet salad,2,2709682,Beet juice,Survey (FNDDS),438.64062
+beet_salad,beet salad,3,2709770,"Beets, raw",Survey (FNDDS),438.64062
+beet_salad,beet salad,4,169145,"Beets, raw",SR Legacy,438.64062
+beet_salad,beet salad,5,2710126,Baby Toddler beets,Survey (FNDDS),400.70062
+beignets,beignets,1,2708071,Beignet,Survey (FNDDS),832.31177
+bibimbap,bibimbap,1,2708950,"Bibimbap, Korean",Survey (FNDDS),761.18005
+bread_pudding,bread pudding,1,2705680,"Pudding, bread",Survey (FNDDS),692.0366
+bread_pudding,bread pudding,2,2705697,Banana pudding,Survey (FNDDS),411.41898
+bread_pudding,bread pudding,3,2705685,"Pudding, rice",Survey (FNDDS),411.41898
+bread_pudding,bread pudding,4,2708949,Noodle pudding,Survey (FNDDS),411.345
+bread_pudding,bread pudding,5,2705679,"Pudding, chocolate, NFS",Survey (FNDDS),393.6556
+breakfast_burrito,breakfast burrito,1,170787,"Fast foods, breakfast burrito, with egg, cheese, and sausage",SR Legacy,552.5237
+breakfast_burrito,breakfast burrito,2,2707343,Egg burrito,Survey (FNDDS),446.879
+breakfast_burrito,breakfast burrito,3,2708534,"Burrito, NFS",Survey (FNDDS),438.057
+breakfast_burrito,breakfast burrito,4,2707345,"Egg burrito, with bacon",Survey (FNDDS),409.14764
+breakfast_burrito,breakfast burrito,5,2707344,"Egg burrito, with sausage",Survey (FNDDS),409.14764
+bruschetta,bruschetta,1,2707652,Bruschetta,Survey (FNDDS),1666.0972
+caesar_salad,caesar salad,1,2709591,"Caesar salad, with romaine, no dressing",Survey (FNDDS),668.7879
+caesar_salad,caesar salad,2,169055,"Salad dressing, caesar dressing, regular",SR Legacy,597.2151
+caesar_salad,caesar salad,3,171045,"Salad dressing, caesar, fat-free",SR Legacy,597.2151
+caesar_salad,caesar salad,4,169877,"Salad dressing, caesar, low calorie",SR Legacy,597.2151
+caesar_salad,caesar salad,5,2710199,Caesar dressing,Survey (FNDDS),463.53583
+cannoli,cannoli,1,2708052,"Pastry, Italian, with cheese",Survey (FNDDS),37.116196
+caprese_salad,caprese salad,1,2710195,"Salad dressing, NFS, for salads",Survey (FNDDS),351.2564
+caprese_salad,caprese salad,2,2706749,Beef salad,Survey (FNDDS),318.51453
+caprese_salad,caprese salad,3,2706824,Crab salad,Survey (FNDDS),318.51453
+caprese_salad,caprese salad,4,2706825,Lobster salad,Survey (FNDDS),318.51453
+caprese_salad,caprese salad,5,2710056,Pea salad,Survey (FNDDS),318.51453
+carrot_cake,carrot cake,1,2707859,"Cake or cupcake, carrot",Survey (FNDDS),588.6123
+carrot_cake,carrot cake,2,174932,"Cake, pudding-type, carrot, dry mix",SR Legacy,467.33075
+carrot_cake,carrot cake,3,2709660,"Carrots, raw",Survey (FNDDS),350.80408
+carrot_cake,carrot cake,4,2707875,"Cake, fruit cake",Survey (FNDDS),350.72177
+carrot_cake,carrot cake,5,170500,"Carrot, dehydrated",SR Legacy,343.9572
+ceviche,ceviche,1,2706463,Ceviche,Survey (FNDDS),1955.9069
+cheese_plate,cheese plate,1,167671,"CRACKER BARREL, macaroni n' cheese plate, from kid's menu",SR Legacy,471.16608
+cheese_plate,cheese plate,2,174394,"Veal, breast, plate half, boneless, separable lean and fat, cooked, braised",SR Legacy,339.51337
+cheese_plate,cheese plate,3,171787,"Beef, plate, inside skirt steak, separable lean and fat, trimmed to 0"" fat, all grades, cooked, broiled",SR Legacy,284.5115
+cheese_plate,cheese plate,4,168744,"Beef, plate, inside skirt steak, separable lean only, trimmed to 0"" fat, all grades, cooked, broiled",SR Legacy,284.5115
+cheese_plate,cheese plate,5,171788,"Beef, plate, outside skirt steak, separable lean and fat, trimmed to 0"" fat, all grades, cooked, broiled",SR Legacy,284.5115
+cheesecake,cheesecake,1,2707863,"Cheesecake, chocolate",Survey (FNDDS),417.82452
+cheesecake,cheesecake,2,2707862,"Cheesecake, fruit",Survey (FNDDS),417.82452
+cheesecake,cheesecake,3,2707861,"Cheesecake, plain",Survey (FNDDS),417.82452
+cheesecake,cheesecake,4,172711,"Cake, cheesecake, commercially prepared",SR Legacy,351.3192
+cheesecake,cheesecake,5,172712,"Cake, cheesecake, prepared from mix, no-bake type",SR Legacy,283.66855
+chicken_curry,chicken curry,1,2706437,Chicken curry,Survey (FNDDS),1844.4401
+chicken_curry,chicken curry,2,2706438,Chicken curry with rice,Survey (FNDDS),610.6932
+chicken_curry,chicken curry,3,2706388,Beef curry,Survey (FNDDS),428.90186
+chicken_curry,chicken curry,4,2710178,Curry sauce,Survey (FNDDS),428.90186
+chicken_curry,chicken curry,5,2706460,Fish curry,Survey (FNDDS),428.90186
+chicken_quesadilla,chicken quesadilla,1,2708593,"Quesadilla, chicken",Survey (FNDDS),753.6686
+chicken_quesadilla,chicken quesadilla,2,2708596,"Quesadilla, chicken, with vegetables",Survey (FNDDS),688.4181
+chicken_quesadilla,chicken quesadilla,3,170765,"Fast foods, quesadilla, with chicken",SR Legacy,633.5786
+chicken_quesadilla,chicken quesadilla,4,2708597,"Quesadilla, egg",Survey (FNDDS),514.0046
+chicken_quesadilla,chicken quesadilla,5,2708590,"Quesadilla, NFS",Survey (FNDDS),514.0046
+chicken_wings,chicken wings,1,2706061,"Chicken wing, stewed",Survey (FNDDS),621.491
+chicken_wings,chicken wings,2,2706064,"Chicken wing, sauteed",Survey (FNDDS),620.1902
+chicken_wings,chicken wings,3,2706060,"Chicken wing, rotisserie",Survey (FNDDS),611.73944
+chicken_wings,chicken wings,4,2706069,"Chicken wing, baked, coated",Survey (FNDDS),563.0171
+chicken_wings,chicken wings,5,2706063,"Chicken wing, grilled with sauce",Survey (FNDDS),563.0171
+chocolate_cake,chocolate cake,1,2707873,"Snack cake, chocolate",Survey (FNDDS),441.0684
+chocolate_cake,chocolate cake,2,2707871,"Cake, chocolate, flourless",Survey (FNDDS),434.1586
+chocolate_cake,chocolate cake,3,174942,"Cake, snack cakes, creme-filled, chocolate with frosting",SR Legacy,405.31613
+chocolate_cake,chocolate cake,4,2707868,"Cake or cupcake, chocolate, no icing",Survey (FNDDS),399.6029
+chocolate_cake,chocolate cake,5,2707869,"Cake or cupcake, German chocolate",Survey (FNDDS),399.6029
+chocolate_mousse,chocolate mousse,1,2705698,Mousse,Survey (FNDDS),570.5032
+chocolate_mousse,chocolate mousse,2,168777,"Desserts, mousse, chocolate, prepared-from-recipe",SR Legacy,500.59842
+chocolate_mousse,chocolate mousse,3,2706448,Fish timbale or mousse,Survey (FNDDS),471.7603
+chocolate_mousse,chocolate mousse,4,175015,"Pie, chocolate mousse, prepared from mix, no-bake type",SR Legacy,440.1695
+chocolate_mousse,chocolate mousse,5,2708068,"Doughnut, chocolate, with chocolate icing",Survey (FNDDS),192.76913
+churros,churros,1,2708070,Churros,Survey (FNDDS),1823.9808
+clam_chowder,clam chowder,1,2707138,"Soup, Manhattan clam chowder",Survey (FNDDS),817.94556
+clam_chowder,clam chowder,2,2707139,"Soup, New England clam chowder",Survey (FNDDS),785.9547
+clam_chowder,clam chowder,3,174556,"CAMPBELL'S CHUNKY, New England Clam Chowder",SR Legacy,705.5352
+clam_chowder,clam chowder,4,171152,"Soup, clam chowder, manhattan, canned, condensed",SR Legacy,705.5352
+clam_chowder,clam chowder,5,171547,"Soup, clam chowder, new england, canned, condensed",SR Legacy,660.184
+club_sandwich,club sandwich,1,2706995,Club sandwich on wheat,Survey (FNDDS),742.1824
+club_sandwich,club sandwich,2,2706993,Club sandwich on white,Survey (FNDDS),742.1824
+club_sandwich,club sandwich,3,2706996,"Club sandwich on wheat, with cheese",Survey (FNDDS),683.0537
+club_sandwich,club sandwich,4,2706994,"Club sandwich on white, with cheese",Survey (FNDDS),683.0537
+club_sandwich,club sandwich,5,2706997,"Club sandwich or sub, restaurant",Survey (FNDDS),683.0537
+crab_cakes,crab cakes,1,2706549,"Crab, cake",Survey (FNDDS),762.47656
+crab_cakes,crab cakes,2,2707022,Crab cake sandwich,Survey (FNDDS),702.5232
+crab_cakes,crab cakes,3,171967,"Crustaceans, crab, blue, crab cakes, home recipe",SR Legacy,626.2325
+crab_cakes,crab cakes,4,2706344,Crab,Survey (FNDDS),489.4735
+crab_cakes,crab cakes,5,2706843,Crab salad made with imitation crab,Survey (FNDDS),464.43402
+creme_brulee,creme brulee,1,2705684,Creme brulee,Survey (FNDDS),2160.4175
+creme_brulee,creme brulee,2,2707948,"Cookie, oatmeal sandwich, with creme filling",Survey (FNDDS),286.69666
+creme_brulee,creme brulee,3,171842,"Cookies, oatmeal sandwich, with creme filling",SR Legacy,273.66257
+creme_brulee,creme brulee,4,172737,"Cookies, vanilla sandwich with creme filling",SR Legacy,273.66257
+creme_brulee,creme brulee,5,172757,"Doughnuts, yeast-leavened, with creme filling",SR Legacy,273.66257
+croque_madame,croque madame,,,NO MATCH,,
+cup_cakes,cup cakes,1,2707875,"Cake, fruit cake",Survey (FNDDS),350.72177
+cup_cakes,cup cakes,2,2708165,Popcorn cake,Survey (FNDDS),312.58325
+cup_cakes,cup cakes,3,2707872,"Cake, cream",Survey (FNDDS),311.92755
+cup_cakes,cup cakes,4,2708162,Rice cake,Survey (FNDDS),309.0044
+cup_cakes,cup cakes,5,2707409,Bean cake,Survey (FNDDS),301.4319
+deviled_eggs,deviled eggs,1,2707181,"Egg, deviled",Survey (FNDDS),875.69684
+deviled_eggs,deviled eggs,2,167924,"Nabisco, Nabisco Snackwell's Fat Free Devil's Food Cookie Cakes",SR Legacy,334.02133
+deviled_eggs,deviled eggs,3,2707180,"Egg, Benedict",Survey (FNDDS),321.577
+deviled_eggs,deviled eggs,4,2707179,"Egg, creamed",Survey (FNDDS),321.577
+deviled_eggs,deviled eggs,5,174901,"Bagels, egg",SR Legacy,321.40033
+donuts,donuts,1,174993,"Doughnuts, cake-type, chocolate, sugared or glazed",SR Legacy,23.14325
+donuts,donuts,2,174990,"Doughnuts, cake-type, plain (includes unsugared, old-fashioned)",SR Legacy,23.14325
+donuts,donuts,3,174991,"Doughnuts, cake-type, plain, chocolate-coated or frosted",SR Legacy,23.14325
+donuts,donuts,4,174992,"Doughnuts, cake-type, plain, sugared or glazed",SR Legacy,23.14325
+donuts,donuts,5,172756,"Doughnuts, french crullers, glazed",SR Legacy,23.14325
+dumplings,dumplings,1,2708344,"Dumpling, no meat",Survey (FNDDS),506.07602
+dumplings,dumplings,2,2706543,Chicken or turkey with dumplings,Survey (FNDDS),478.9949
+dumplings,dumplings,3,168042,"Stew, dumpling with mutton (Navajo)",SR Legacy,425.49
+dumplings,dumplings,4,2708705,"Wonton, dumpling or pot sticker, fried",Survey (FNDDS),394.75735
+dumplings,dumplings,5,2708708,"Wonton, dumpling or pot sticker, steamed",Survey (FNDDS),394.75735
+edamame,edamame,1,2707436,"Edamame, cooked",Survey (FNDDS),492.31763
+edamame,edamame,2,168411,"Edamame, frozen, prepared",SR Legacy,449.72427
+edamame,edamame,3,168410,"Edamame, frozen, unprepared",SR Legacy,449.72427
+eggs_benedict,eggs benedict,1,2707180,"Egg, Benedict",Survey (FNDDS),1100.3383
+eggs_benedict,eggs benedict,2,2707179,"Egg, creamed",Survey (FNDDS),321.577
+eggs_benedict,eggs benedict,3,2707181,"Egg, deviled",Survey (FNDDS),321.577
+eggs_benedict,eggs benedict,4,174901,"Bagels, egg",SR Legacy,321.40033
+eggs_benedict,eggs benedict,5,172673,"Bread, egg",SR Legacy,321.40033
+escargots,escargots,1,2706368,Escargot,Survey (FNDDS),874.53564
+falafel,falafel,1,2707408,Falafel,Survey (FNDDS),1772.0366
+falafel,falafel,2,2707483,Falafel sandwich,Survey (FNDDS),580.57715
+falafel,falafel,3,172455,"Falafel, home-prepared",SR Legacy,530.3324
+filet_mignon,filet mignon,1,170319,"McDONALD'S, FILET-O-FISH",SR Legacy,441.76947
+filet_mignon,filet mignon,2,173314,"McDONALD'S, FILET-O-FISH (without tartar sauce)",SR Legacy,356.65182
+filet_mignon,filet mignon,3,170318,"Fast Foods, crispy chicken filet sandwich, with lettuce and mayonnaise",SR Legacy,335.14288
+filet_mignon,filet mignon,4,169813,"Salmon, red (sockeye), filets with skin, smoked (Alaska Native)",SR Legacy,335.14288
+filet_mignon,filet mignon,5,170368,"Fast Foods, grilled chicken filet sandwich, with lettuce, tomato and spread",SR Legacy,316.0872
+fish_and_chips,fish and chips,1,174195,"Fish, fish sticks, frozen, prepared",SR Legacy,430.90833
+fish_and_chips,fish and chips,2,171606,Fish broth,SR Legacy,411.1243
+fish_and_chips,fish and chips,3,2706460,Fish curry,Survey (FNDDS),411.1243
+fish_and_chips,fish and chips,4,2706457,Fish sauce,Survey (FNDDS),411.1243
+fish_and_chips,fish and chips,5,2706232,"Fish, anchovy",Survey (FNDDS),411.1243
+foie_gras,foie gras,1,171100,"Pate de foie gras, canned (goose liver pate), smoked",SR Legacy,873.4286
+french_fries,french fries,1,169009,"APPLEBEE'S, french fries",SR Legacy,661.09515
+french_fries,french fries,2,167672,"DENNY'S, french fries",SR Legacy,661.09515
+french_fries,french fries,3,170721,"McDONALD'S, french fries",SR Legacy,661.09515
+french_fries,french fries,4,170726,"WENDY'S, french fries",SR Legacy,661.09515
+french_fries,french fries,5,2709458,"Potato, french fries, from fresh, fried",Survey (FNDDS),627.44336
+french_onion_soup,french onion soup,1,2710108,"Soup, French onion",Survey (FNDDS),893.9086
+french_onion_soup,french onion soup,2,171577,"SMART SOUP, French Lentil",SR Legacy,553.79254
+french_onion_soup,french onion soup,3,171551,"Soup, onion, canned, condensed",SR Legacy,530.19684
+french_onion_soup,french onion soup,4,171165,"Soup, onion, dry, mix",SR Legacy,530.19684
+french_onion_soup,french onion soup,5,171552,"Soup, cream of onion, canned, condensed",SR Legacy,491.0986
+french_toast,french toast,1,2708338,French toast sticks,Survey (FNDDS),648.72565
+french_toast,french toast,2,2708332,"French toast, frozen",Survey (FNDDS),648.72565
+french_toast,french toast,3,2708331,"French toast, NFS",Survey (FNDDS),648.72565
+french_toast,french toast,4,2708335,"French toast, plain",Survey (FNDDS),648.72565
+french_toast,french toast,5,2708334,"French toast, school",Survey (FNDDS),648.72565
+fried_calamari,fried calamari,1,2706334,"Calamari, fried",Survey (FNDDS),1002.8668
+fried_calamari,fried calamari,2,2706333,"Calamari, cooked",Survey (FNDDS),618.66235
+fried_calamari,fried calamari,3,2706341,"Clams, fried",Survey (FNDDS),375.74826
+fried_calamari,fried calamari,4,2706347,"Crayfish, fried",Survey (FNDDS),375.74826
+fried_calamari,fried calamari,5,2706148,"Dove, fried",Survey (FNDDS),375.74826
+fried_rice,fried rice,1,2708951,"Rice, fried, meatless",Survey (FNDDS),618.65045
+fried_rice,fried rice,2,2708952,"Rice, fried, NFS",Survey (FNDDS),607.1821
+fried_rice,fried rice,3,2708955,"Rice, fried, with beef",Survey (FNDDS),597.61945
+fried_rice,fried rice,4,2708953,"Rice, fried, with chicken",Survey (FNDDS),597.61945
+fried_rice,fried rice,5,2708954,"Rice, fried, with pork",Survey (FNDDS),597.61945
+frozen_yogurt,frozen yogurt,1,2705456,Frozen yogurt sandwich,Survey (FNDDS),561.71497
+frozen_yogurt,frozen yogurt,2,2705453,"Frozen yogurt, chocolate",Survey (FNDDS),542.9912
+frozen_yogurt,frozen yogurt,3,2705451,"Frozen yogurt, NFS",Survey (FNDDS),542.9912
+frozen_yogurt,frozen yogurt,4,2705452,"Frozen yogurt, vanilla",Survey (FNDDS),542.9912
+frozen_yogurt,frozen yogurt,5,168104,"Frozen yogurts, chocolate",SR Legacy,542.9912
+garlic_bread,garlic bread,1,167939,"Garlic bread, frozen",SR Legacy,528.10925
+garlic_bread,garlic bread,2,2707626,"Garlic bread, NFS",Survey (FNDDS),528.10925
+garlic_bread,garlic bread,3,2707628,"Garlic bread, from frozen",Survey (FNDDS),497.69748
+garlic_bread,garlic bread,4,2707627,"Garlic bread, from fast food / restaurant",Survey (FNDDS),432.0375
+garlic_bread,garlic bread,5,2707632,"Garlic bread, with melted cheese, from frozen",Survey (FNDDS),431.19052
+gnocchi,gnocchi,1,2708721,"Gnocchi, cheese",Survey (FNDDS),528.036
+gnocchi,gnocchi,2,2708722,"Gnocchi, potato",Survey (FNDDS),528.036
+greek_salad,greek salad,1,2709830,"Greek Salad, no dressing",Survey (FNDDS),600.8398
+greek_salad,greek salad,2,2710195,"Salad dressing, NFS, for salads",Survey (FNDDS),351.2564
+greek_salad,greek salad,3,2706749,Beef salad,Survey (FNDDS),318.51453
+greek_salad,greek salad,4,2706824,Crab salad,Survey (FNDDS),318.51453
+greek_salad,greek salad,5,2706825,Lobster salad,Survey (FNDDS),318.51453
+grilled_cheese_sandwich,grilled cheese sandwich,1,2705801,"Grilled cheese sandwich, NFS",Survey (FNDDS),748.02954
+grilled_cheese_sandwich,grilled cheese sandwich,2,2705804,"Grilled cheese sandwich, cheddar cheese, on white bread",Survey (FNDDS),660.9118
+grilled_cheese_sandwich,grilled cheese sandwich,3,2705805,"Grilled cheese sandwich, cheddar cheese, on wheat bread",Survey (FNDDS),659.4559
+grilled_cheese_sandwich,grilled cheese sandwich,4,2705803,"Grilled cheese sandwich, American cheese, on wheat bread",Survey (FNDDS),655.2369
+grilled_cheese_sandwich,grilled cheese sandwich,5,2705802,"Grilled cheese sandwich, American cheese, on white bread",Survey (FNDDS),655.2369
+grilled_salmon,grilled salmon,1,2706287,"Fish, salmon, grilled",Survey (FNDDS),710.62256
+grilled_salmon,grilled salmon,2,2706850,Lomi salmon,Survey (FNDDS),390.48062
+grilled_salmon,grilled salmon,3,2706826,Salmon salad,Survey (FNDDS),390.48062
+grilled_salmon,grilled salmon,4,2706357,"Scallops, grilled",Survey (FNDDS),388.50006
+grilled_salmon,grilled salmon,5,2706362,"Shrimp, grilled",Survey (FNDDS),388.50006
+guacamole,guacamole,1,2709307,"Guacamole, NFS",Survey (FNDDS),488.57285
+guacamole,guacamole,2,2709308,Guacamole with tomatoes,Survey (FNDDS),472.26807
+gyoza,gyoza,,,NO MATCH,,
+hamburger,hamburger,1,2706924,Hamburger (McDonalds),Survey (FNDDS),428.6891
+hamburger,hamburger,2,2706926,Hamburger slider,Survey (FNDDS),428.6891
+hamburger,hamburger,3,2706920,"Hamburger, NFS",Survey (FNDDS),428.6891
+hamburger,hamburger,4,170717,"McDONALD'S, Hamburger",SR Legacy,428.6891
+hamburger,hamburger,5,170328,"BURGER KING, Hamburger",SR Legacy,391.6118
+hot_and_sour_soup,hot and sour soup,1,2707136,"Soup, hot and sour",Survey (FNDDS),867.52356
+hot_and_sour_soup,hot and sour soup,2,174808,"Soup, hot and sour, Chinese restaurant",SR Legacy,719.97546
+hot_and_sour_soup,hot and sour soup,3,2710654,Whiskey sour,Survey (FNDDS),346.65195
+hot_and_sour_soup,hot and sour soup,4,2710105,"Soup, borscht",Survey (FNDDS),323.9163
+hot_and_sour_soup,hot and sour soup,5,2707126,"Soup, pepperpot",Survey (FNDDS),323.9163
+hot_dog,hot dog,1,2707470,"Hot dog, vegetarian",Survey (FNDDS),657.0642
+hot_dog,hot dog,2,2706167,"Hot dog, beef",Survey (FNDDS),639.58154
+hot_dog,hot dog,3,2706166,"Hot dog, NFS",Survey (FNDDS),639.58154
+hot_dog,hot dog,4,2706170,"Hot dog, turkey",Survey (FNDDS),639.58154
+hot_dog,hot dog,5,2706409,"Chili hot dog, no bun",Survey (FNDDS),588.63806
+huevos_rancheros,huevos rancheros,1,2707191,Huevos rancheros,Survey (FNDDS),2548.261
+huevos_rancheros,huevos rancheros,2,2705743,"Queso Anejo, aged Mexican cheese",Survey (FNDDS),29.361862
+huevos_rancheros,huevos rancheros,3,2705745,Queso Fresco,Survey (FNDDS),25.446781
+huevos_rancheros,huevos rancheros,4,2707675,"Pan Dulce, with sugar topping",Survey (FNDDS),20.46708
+huevos_rancheros,huevos rancheros,5,2707674,"Pan Dulce, no topping",Survey (FNDDS),20.326336
+hummus,hummus,1,174289,"Hummus, commercial",SR Legacy,405.36456
+hummus,hummus,2,2707403,"Hummus, flavored",Survey (FNDDS),405.36456
+hummus,hummus,3,2707402,"Hummus, plain",Survey (FNDDS),405.36456
+hummus,hummus,4,172454,"Hummus, home prepared",SR Legacy,370.30933
+hummus,hummus,5,2707428,Bean chips,Survey (FNDDS),17.84439
+ice_cream,ice cream,1,2707877,Ice cream cake,Survey (FNDDS),436.22168
+ice_cream,ice cream,2,172226,Ice cream sandwich,SR Legacy,436.22168
+ice_cream,ice cream,3,2705632,"Ice cream, chocolate",Survey (FNDDS),436.22168
+ice_cream,ice cream,4,2705663,"Ice cream, fried",Survey (FNDDS),436.22168
+ice_cream,ice cream,5,2705629,"Ice cream, NFS",Survey (FNDDS),436.22168
+lasagna,lasagna,1,2708750,Lasagna with meat,Survey (FNDDS),482.80157
+lasagna,lasagna,2,2708758,"Lasagna, meatless",Survey (FNDDS),462.42947
+lasagna,lasagna,3,2708751,"Lasagna with meat, canned",Survey (FNDDS),438.64502
+lasagna,lasagna,4,2708756,Lasagna with chicken or turkey,Survey (FNDDS),422.42715
+lasagna,lasagna,5,2708755,Lasagna with meat and spinach,Survey (FNDDS),422.42715
+lobster_bisque,lobster bisque,1,2707140,"Soup, bisque",Survey (FNDDS),553.14185
+lobster_bisque,lobster bisque,2,2706349,Lobster,Survey (FNDDS),542.11523
+lobster_bisque,lobster bisque,3,2707141,Lobster gumbo,Survey (FNDDS),490.7521
+lobster_bisque,lobster bisque,4,2706825,Lobster salad,Survey (FNDDS),490.7521
+lobster_bisque,lobster bisque,5,2706455,Shrimp with lobster sauce,Survey (FNDDS),448.2944
+lobster_roll_sandwich,lobster roll sandwich,1,2706349,Lobster,Survey (FNDDS),542.11523
+lobster_roll_sandwich,lobster roll sandwich,2,2707141,Lobster gumbo,Survey (FNDDS),490.7521
+lobster_roll_sandwich,lobster roll sandwich,3,2706825,Lobster salad,Survey (FNDDS),490.7521
+lobster_roll_sandwich,lobster roll sandwich,4,2706455,Shrimp with lobster sauce,Survey (FNDDS),448.2944
+lobster_roll_sandwich,lobster roll sandwich,5,174208,"Crustaceans, lobster, northern, raw",SR Legacy,412.61102
+macaroni_and_cheese,macaroni and cheese,1,2708811,Macaroni or noodles with cheese,Survey (FNDDS),502.4741
+macaroni_and_cheese,macaroni and cheese,2,2706481,Beef and macaroni with cheese sauce,Survey (FNDDS),449.0293
+macaroni_and_cheese,macaroni and cheese,3,2708822,Macaroni or noodles with cheese and egg,Survey (FNDDS),447.7651
+macaroni_and_cheese,macaroni and cheese,4,2708818,Macaroni or noodles with cheese and meat,Survey (FNDDS),447.7651
+macaroni_and_cheese,macaroni and cheese,5,2708820,Macaroni or noodles with cheese and tomato,Survey (FNDDS),447.7651
+macarons,macarons,,,NO MATCH,,
+miso_soup,miso soup,1,2707455,"Soup, miso or tofu",Survey (FNDDS),752.63104
+miso_soup,miso soup,2,2707439,Miso,Survey (FNDDS),568.0718
+miso_soup,miso soup,3,172442,Miso,SR Legacy,568.0718
+miso_soup,miso soup,4,2707438,Miso sauce,Survey (FNDDS),514.24475
+miso_soup,miso soup,5,2710105,"Soup, borscht",Survey (FNDDS),323.9163
+mussels,mussels,1,2706350,Mussels,Survey (FNDDS),1712.7188
+mussels,mussels,2,174216,"Mollusks, mussel, blue, raw",SR Legacy,484.557
+mussels,mussels,3,174217,"Mollusks, mussel, blue, cooked, moist heat",SR Legacy,418.02042
+nachos,nachos,1,2708580,"Nachos, chicken",Survey (FNDDS),455.8113
+nachos,nachos,2,2708576,"Nachos, NFS",Survey (FNDDS),455.8113
+nachos,nachos,3,2708582,"Nachos, with beans",Survey (FNDDS),455.8113
+nachos,nachos,4,2708578,"Nachos, beef or pork",Survey (FNDDS),417.67767
+nachos,nachos,5,2708577,"Nachos, cheese only",Survey (FNDDS),417.67767
+omelette,omelette,,,NO MATCH,,
+onion_rings,onion rings,1,169844,"DENNY'S, onion rings",SR Legacy,677.93945
+onion_rings,onion rings,2,2710055,Fried onion rings,Survey (FNDDS),677.93945
+onion_rings,onion rings,3,2708245,Onion flavored rings,Survey (FNDDS),677.93945
+onion_rings,onion rings,4,169840,"APPLEBEE'S, crunchy onion rings",SR Legacy,623.93585
+onion_rings,onion rings,5,170771,"BURGER KING, Onion Rings",SR Legacy,623.93585
+oysters,oysters,1,2708747,Dressing with oysters,Survey (FNDDS),530.69495
+oysters,oysters,2,2708160,"Crackers, oyster",Survey (FNDDS),512.3453
+oysters,oysters,3,2707150,Oyster sauce,Survey (FNDDS),512.3453
+oysters,oysters,4,2706849,Oysters Rockefeller,Survey (FNDDS),512.3453
+oysters,oysters,5,2706355,"Oysters, canned",Survey (FNDDS),512.3453
+pad_thai,pad thai,1,2708806,Pad Thai with chicken,Survey (FNDDS),905.31805
+pad_thai,pad thai,2,2708808,Pad Thai with meat,Survey (FNDDS),905.31805
+pad_thai,pad thai,3,2708807,Pad Thai with seafood,Survey (FNDDS),905.31805
+pad_thai,pad thai,4,2708805,"Pad Thai, meatless",Survey (FNDDS),905.31805
+pad_thai,pad thai,5,2708804,"Pad Thai, NFS",Survey (FNDDS),905.31805
+paella,paella,1,2706711,Paella with seafood,Survey (FNDDS),679.0822
+paella,paella,2,2706723,"Paella, NFS",Survey (FNDDS),679.0822
+paella,paella,3,2708973,"Seafood paella, Puerto Rican style",Survey (FNDDS),551.6859
+pancakes,pancakes,1,2708343,Chinese pancake,Survey (FNDDS),409.4374
+pancakes,pancakes,2,2710273,Pancake syrup,Survey (FNDDS),409.4374
+pancakes,pancakes,3,2708308,"Pancakes, chocolate",Survey (FNDDS),409.4374
+pancakes,pancakes,4,2708306,"Pancakes, fruit",Survey (FNDDS),409.4374
+pancakes,pancakes,5,2708294,"Pancakes, NFS",Survey (FNDDS),409.4374
+panna_cotta,panna cotta,,,NO MATCH,,
+peking_duck,peking duck,1,2706141,"Duck, Peking",Survey (FNDDS),1356.9799
+peking_duck,peking duck,2,2710298,Duck sauce,Survey (FNDDS),552.3295
+peking_duck,peking duck,3,2707176,"Duck egg, cooked",Survey (FNDDS),504.5336
+peking_duck,peking duck,4,2706137,"Duck, cooked, skin eaten",Survey (FNDDS),464.36368
+peking_duck,peking duck,5,2706138,"Duck, cooked, skin not eaten",Survey (FNDDS),464.36368
+pho,pho,1,2707124,"Soup, pho, with meat",Survey (FNDDS),585.88916
+pho,pho,2,2707125,"Soup, pho, no meat",Survey (FNDDS),563.9075
+pizza,pizza,1,2708008,Dessert pizza,Survey (FNDDS),320.74588
+pizza,pizza,2,2708507,Mexican pizza,Survey (FNDDS),308.90808
+pizza,pizza,3,2708686,Pizza rolls,Survey (FNDDS),308.90808
+pizza,pizza,4,172041,"PIZZA HUT 12"" Cheese Pizza, Pan Crust",SR Legacy,294.55283
+pizza,pizza,5,173280,"PIZZA HUT 12"" Pepperoni Pizza, Pan Crust",SR Legacy,294.55283
+pork_chop,pork chop,1,2705872,"Pork, chop, stuffed",Survey (FNDDS),644.34155
+pork_chop,pork chop,2,2705867,"Pork, chop, lean and fat eaten",Survey (FNDDS),549.2786
+pork_chop,pork chop,3,2705868,"Pork, chop, lean only eaten",Survey (FNDDS),549.2786
+pork_chop,pork chop,4,2705866,"Pork, chop, NS as to fat eaten",Survey (FNDDS),549.2786
+pork_chop,pork chop,5,2706648,Pork chow mein or chop suey with noodles,Survey (FNDDS),511.55756
+poutine,poutine,,,NO MATCH,,
+prime_rib,prime rib,1,169514,"Beef, rib, small end (ribs 10-12), separable lean and fat, trimmed to 1/8"" fat, prime, raw",SR Legacy,532.47943
+prime_rib,prime rib,2,169503,"Beef, rib, whole (ribs 6-12), separable lean and fat, trimmed to 1/8"" fat, prime, raw",SR Legacy,532.349
+prime_rib,prime rib,3,169515,"Beef, rib, small end (ribs 10-12), separable lean and fat, trimmed to 1/8"" fat, prime, cooked, broiled",SR Legacy,514.62335
+prime_rib,prime rib,4,169516,"Beef, rib, small end (ribs 10-12), separable lean and fat, trimmed to 1/8"" fat, prime, cooked, roasted",SR Legacy,514.62335
+prime_rib,prime rib,5,168685,"Beef, rib, large end (ribs 6-9), separable lean and fat, trimmed to 1/8"" fat, prime, raw",SR Legacy,513.1342
+pulled_pork_sandwich,pulled pork sandwich,1,173344,Pulled pork in barbecue sauce,SR Legacy,680.5889
+pulled_pork_sandwich,pulled pork sandwich,2,2706977,Pork sandwich,Survey (FNDDS),631.2142
+pulled_pork_sandwich,pulled pork sandwich,3,2706978,"Pork sandwich, with cheese",Survey (FNDDS),576.5796
+pulled_pork_sandwich,pulled pork sandwich,4,174583,"Sandwich spread, pork, beef",SR Legacy,530.6622
+pulled_pork_sandwich,pulled pork sandwich,5,2706975,"Barbecue pork sandwich, on white bun",Survey (FNDDS),502.8782
+ramen,ramen,1,2709154,Ramen bowl with beef,Survey (FNDDS),443.6011
+ramen,ramen,2,2709155,Ramen bowl with chicken,Survey (FNDDS),443.6011
+ramen,ramen,3,2709156,Ramen bowl with fish,Survey (FNDDS),443.6011
+ramen,ramen,4,2709153,"Ramen bowl, NFS",Survey (FNDDS),443.6011
+ramen,ramen,5,2709157,"Ramen bowl, vegetarian",Survey (FNDDS),443.6011
+ravioli,ravioli,1,173328,"Ravioli, cheese-filled, canned",SR Legacy,353.71072
+ravioli,ravioli,2,2708767,"Ravioli, cheese-filled, no sauce",Survey (FNDDS),353.71072
+ravioli,ravioli,3,2708763,"Ravioli, meat-filled, no sauce",Survey (FNDDS),353.71072
+ravioli,ravioli,4,2708760,"Ravioli, NS as to filling, no sauce",Survey (FNDDS),353.71072
+ravioli,ravioli,5,2708761,"Ravioli, NS as to filling, with tomato sauce",Survey (FNDDS),349.61267
+red_velvet_cake,red velvet cake,1,2707884,"Cake or cupcake, red velvet",Survey (FNDDS),897.77496
+red_velvet_cake,red velvet cake,2,2707875,"Cake, fruit cake",Survey (FNDDS),350.72177
+red_velvet_cake,red velvet cake,3,2708165,Popcorn cake,Survey (FNDDS),312.58325
+red_velvet_cake,red velvet cake,4,2707872,"Cake, cream",Survey (FNDDS),311.92755
+red_velvet_cake,red velvet cake,5,2708162,Rice cake,Survey (FNDDS),309.0044
+risotto,risotto,1,2709094,"Rice, white, with cheese and/or cream based sauce, fat added",Survey (FNDDS),20.76421
+risotto,risotto,2,2709103,"Rice, brown, with cheese and/or cream based sauce, fat added",Survey (FNDDS),17.721771
+risotto,risotto,3,2709112,"Rice, white, with vegetables, cheese and/or cream based sauce, fat added",Survey (FNDDS),16.905617
+risotto,risotto,4,2709121,"Rice, brown, with vegetables, cheese and/or cream based sauce, fat added",Survey (FNDDS),14.874121
+samosa,samosa,1,2708730,Samosa,Survey (FNDDS),1968.5768
+sashimi,sashimi,1,2706284,"Fish, salmon, raw",Survey (FNDDS),37.116196
+scallops,scallops,1,2706359,"Scallops, fried",Survey (FNDDS),500.32285
+scallops,scallops,2,2706357,"Scallops, grilled",Survey (FNDDS),500.32285
+scallops,scallops,3,2709723,"Tomatoes, scalloped",Survey (FNDDS),500.32285
+scallops,scallops,4,2710046,"Corn, scalloped or pudding",Survey (FNDDS),457.03543
+scallops,scallops,5,2709448,"Potato, scalloped, NFS",Survey (FNDDS),457.03543
+seaweed_salad,seaweed salad,1,2709988,"Seaweed, dried",Survey (FNDDS),502.73074
+seaweed_salad,seaweed salad,2,2710100,"Seaweed, pickled",Survey (FNDDS),502.73074
+seaweed_salad,seaweed salad,3,2709805,"Seaweed, raw",Survey (FNDDS),502.73074
+seaweed_salad,seaweed salad,4,2710110,"Soup, seaweed",Survey (FNDDS),502.73074
+seaweed_salad,seaweed salad,5,170090,"Seaweed, agar, dried",SR Legacy,459.2346
+shrimp_and_grits,shrimp and grits,1,2708363,"Grits, NFS",Survey (FNDDS),551.09564
+shrimp_and_grits,shrimp and grits,2,2708369,"Grits, with cheese, fat added",Survey (FNDDS),463.3266
+shrimp_and_grits,shrimp and grits,3,2708368,"Grits, with cheese, no added fat",Survey (FNDDS),463.3266
+shrimp_and_grits,shrimp and grits,4,2708367,"Grits, with cheese, NS as to fat",Survey (FNDDS),463.3266
+shrimp_and_grits,shrimp and grits,5,2708371,"Grits, instant, made with water, fat added",Survey (FNDDS),400.19855
+spaghetti_bolognese,spaghetti bolognese,1,2709745,Spaghetti sauce,Survey (FNDDS),419.323
+spaghetti_bolognese,spaghetti bolognese,2,169845,"DENNY'S, spaghetti and meatballs",SR Legacy,377.6663
+spaghetti_bolognese,spaghetti bolognese,3,2706470,Spaghetti sauce with meat,Survey (FNDDS),377.6663
+spaghetti_bolognese,spaghetti bolognese,4,2706422,Spaghetti sauce with poultry,Survey (FNDDS),377.6663
+spaghetti_bolognese,spaghetti bolognese,5,2706453,Spaghetti sauce with seafood,Survey (FNDDS),377.6663
+spaghetti_carbonara,spaghetti carbonara,1,2709745,Spaghetti sauce,Survey (FNDDS),419.323
+spaghetti_carbonara,spaghetti carbonara,2,169845,"DENNY'S, spaghetti and meatballs",SR Legacy,377.6663
+spaghetti_carbonara,spaghetti carbonara,3,2706470,Spaghetti sauce with meat,Survey (FNDDS),377.6663
+spaghetti_carbonara,spaghetti carbonara,4,2706422,Spaghetti sauce with poultry,Survey (FNDDS),377.6663
+spaghetti_carbonara,spaghetti carbonara,5,2706453,Spaghetti sauce with seafood,Survey (FNDDS),377.6663
+spring_rolls,spring rolls,1,2707782,"Roll, multigrain",Survey (FNDDS),334.57495
+spring_rolls,spring rolls,2,168889,"Wheat, hard red spring",SR Legacy,332.7369
+spring_rolls,spring rolls,3,2708701,"Egg roll, with shrimp",Survey (FNDDS),327.6376
+spring_rolls,spring rolls,4,2708686,Pizza rolls,Survey (FNDDS),326.46426
+spring_rolls,spring rolls,5,2705883,"Pork, roll",Survey (FNDDS),326.46426
+steak,steak,1,2706747,Pepper steak,Survey (FNDDS),368.2302
+steak,steak,2,2709752,Steak sauce,Survey (FNDDS),368.2302
+steak,steak,3,2706394,Steak tartare,Survey (FNDDS),368.2302
+steak,steak,4,2706387,Steak teriyaki,Survey (FNDDS),368.2302
+steak,steak,5,2706732,Swiss steak,Survey (FNDDS),368.2302
+strawberry_shortcake,strawberry shortcake,1,2707896,"Cake, strawberry shortcake",Survey (FNDDS),731.65393
+strawberry_shortcake,strawberry shortcake,2,174941,"Cake, shortcake, biscuit-type, prepared from recipe",SR Legacy,370.07013
+strawberry_shortcake,strawberry shortcake,3,2709283,"Strawberries, raw",Survey (FNDDS),285.21564
+strawberry_shortcake,strawberry shortcake,4,2709284,"Strawberries, canned",Survey (FNDDS),267.73297
+strawberry_shortcake,strawberry shortcake,5,2709285,"Strawberries, frozen",Survey (FNDDS),267.73297
+sushi,sushi,1,2708959,"Sushi, NFS",Survey (FNDDS),559.9791
+sushi,sushi,2,2708972,"Sushi, topped with egg",Survey (FNDDS),517.4138
+sushi,sushi,3,2708961,"Sushi roll, California",Survey (FNDDS),514.92725
+sushi,sushi,4,2708971,"Sushi, topped with tuna",Survey (FNDDS),513.40466
+sushi,sushi,5,2708965,Sushi roll tuna,Survey (FNDDS),500.14032
+tacos,tacos,1,170736,"TACO BELL, Taco Salad",SR Legacy,445.29236
+tacos,tacos,2,170733,"TACO BELL, Soft Taco with steak",SR Legacy,423.1888
+tacos,tacos,3,2709740,Taco sauce,Survey (FNDDS),411.70755
+tacos,tacos,4,2708529,"Taco, fish",Survey (FNDDS),406.0471
+tacos,tacos,5,2708514,"Taco, NFS",Survey (FNDDS),406.0471
+takoyaki,takoyaki,,,NO MATCH,,
+tiramisu,tiramisu,1,2705702,Tiramisu,Survey (FNDDS),1745.2554
+tuna_tartare,tuna tartare,1,2706394,Steak tartare,Survey (FNDDS),563.55927
+tuna_tartare,tuna tartare,2,2710173,Tartar sauce,Survey (FNDDS),563.55927
+tuna_tartare,tuna tartare,3,175041,"Leavening agents, cream of tartar",SR Legacy,473.80164
+tuna_tartare,tuna tartare,4,171826,"Sauce, tartar, ready-to-serve",SR Legacy,473.80164
+tuna_tartare,tuna tartare,5,170296,"Fast foods, fish sandwich, with tartar sauce",SR Legacy,408.74493
+waffles,waffles,1,2708327,"Waffle, chocolate",Survey (FNDDS),390.6037
+waffles,waffles,2,2708328,"Waffle, cinnamon",Survey (FNDDS),390.6037
+waffles,waffles,3,2708326,"Waffle, fruit",Survey (FNDDS),390.6037
+waffles,waffles,4,2708312,"Waffle, NFS",Survey (FNDDS),390.6037
+waffles,waffles,5,2708325,"Waffle, plain",Survey (FNDDS),390.6037

@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .accounts import Accounts
+from .food.routes import build_food_router
 from .ml.explain import daily_top_three
 from .ml.service import (forecast_meal, load_population, readiness, recent_from_history,
                          validate_history)
@@ -83,7 +84,7 @@ class Control(BaseModel):
 
 def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
                allowed_origins=None, frontend_dir=None, dev=None, evaluation_path=None,
-               seed_recordings=None, seed_password=None, data_dir=None):
+               seed_recordings=None, seed_password=None, data_dir=None, food_cache=None):
     app = FastAPI(title="Glyimpse", version="1.1")
 
     origins = allowed_origins or [o.strip() for o in
@@ -378,6 +379,10 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
                 for day, group in ranked.groupby("day")]
         return {"model_version": saved[0]["model_version"], "days": days,
                 "meaning": "Average absolute additive contribution across saved meal/horizon predictions; not causal effects"}
+
+    # Photo/typed food -> USDA nutrients & standard portions. Authenticated like the meal endpoints;
+    # the feed into /predict reuses the same dietary-intake text the forecaster already reads.
+    app.include_router(build_food_router(user, cache=food_cache))
 
     # Local dev: serve the static frontend from the same origin. Set GLYIMPSE_FRONTEND_DIR= (empty) to disable.
     static = frontend_dir if frontend_dir is not None else os.environ.get(
