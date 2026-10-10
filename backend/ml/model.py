@@ -90,7 +90,11 @@ def meal_examples(data):
                          "duration_days": (end - start).total_seconds() / 86400})
     if not rows:
         raise ValueError("No usable meal-response examples")
-    return pd.DataFrame(rows), CONTEXT + factors, pd.DataFrame(coverage)
+    examples = pd.DataFrame(rows)
+    features = CONTEXT + factors
+    for column in [*features, *TARGETS]:
+        examples[column] = pd.to_numeric(examples[column], errors="coerce").astype(float)
+    return examples, features, pd.DataFrame(coverage)
 
 
 def fit_population(examples, features, excluded_patient):

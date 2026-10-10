@@ -7,12 +7,28 @@ import pandas as pd
 
 from .model import (CONTEXT, TARGETS, fit_personal, fit_population,
                                 meal_examples, predict, personal_history)
-from .benchmarks import benchmark, scores
+from .benchmarks import benchmark, scores, export_daily_comparisons
 from .normalize import enrich
 from .prepare import prepare
+from .explain import daily_top_three, contributions
 
 
 class PersonalizedTests(unittest.TestCase):
+    def test_daily_rank_uses_magnitude_and_patient_isolation(self):
+        records = []
+        for horizon in [30, 60]:
+            for feature, value in [("food_starch", 10 if horizon == 30 else -10),
+                                   ("baseline", 5), ("insulin_sc_iu", -3), ("food_protein", 1)]:
+                records.append({"Patient": "alice", "Recording": "a", "day": 8,
+                                "feature": feature, "contribution": value})
+        records.append({"Patient": "bob", "Recording": "a", "day": 8,
+                        "feature": "other", "contribution": 100})
+        ranked = daily_top_three(pd.DataFrame(records))
+        alice = ranked[ranked.Patient == "alice"]
+        self.assertEqual(alice.feature.tolist(), ["food_starch", "baseline", "insulin_sc_iu"])
+        self.assertEqual(alice.iloc[0].importance_mg_dl, 10)
+        self.assertEqual(alice.iloc[0].direction, "balanced")
+
     def test_percentage_error_and_tolerance_accuracy(self):
         frame = pd.DataFrame({"Patient": ["1"] * 3, "actual_glucose": [100., 200., 0.],
             "predicted_glucose": [110., 240., 10.], "baseline_prediction": [100.] * 3})
@@ -24,6 +40,7 @@ class PersonalizedTests(unittest.TestCase):
 
     def test_benchmark_comparators(self):
         frame = pd.DataFrame({"Patient": ["1", "1", "2", "2"], "day": [8, 9, 8, 9],
+            "Recording": "a", "meal_time": ["2020-01-08", "2020-01-09"] * 2,
             "horizon_minutes": 30, "actual_glucose": [110., 120., 130., 140.],
             "predicted_glucose": [110., 120., 130., 140.],
             "population_prediction": [100., 110., 120., 130.],
@@ -38,6 +55,23 @@ class PersonalizedTests(unittest.TestCase):
         row = report[report.model == "personalized"].iloc[0]
         self.assertEqual(row.macro_mae_ci_low, 0)
         self.assertEqual(row.macro_mae_ci_high, 0)
+
+    def test_daily_comparisons_isolate_patient_recording_and_day(self):
+        frame = pd.DataFrame({"Patient": ["1", "1", "2", "1"],
+            "Recording": ["a", "a", "a", "b"], "day": [8, 9, 8, 8],
+            "meal_time": ["2020-01-08", "2020-01-09", "2020-01-08", "2020-02-08"],
+            "horizon_minutes": 30, "actual_glucose": 100.,
+            "predicted_glucose": [110., 130., 140., 100.], "baseline_prediction": 100.})
+        with patch.object(pd.DataFrame, "to_csv") as save:
+            comparison, daily = export_daily_comparisons(frame, Path("unused"))
+        self.assertEqual(save.call_count, 3)
+        self.assertEqual(len(comparison), 3)
+        self.assertEqual(comparison.day.unique().tolist(), [8])
+        self.assertEqual(comparison.absolute_error_mg_dl.tolist(), [10., 0., 40.])
+        totals = daily[daily.horizon_minutes == "all"]
+        self.assertEqual(len(totals), 4)
+        self.assertEqual(totals.within_20_mg_dl_percent.tolist(), [100., 0., 100., 0.])
+        self.assertTrue(totals.r2.isna().all())
 
     def test_food_and_medication_parsing(self):
         frame = pd.DataFrame({"Patient": ["1"], "Recording": ["a"], "Date": ["2020-01-01"],
@@ -95,6 +129,9 @@ class PersonalizedTests(unittest.TestCase):
         history = examples[examples.Patient == "1"]
         coef, intercept = fit_personal(model, history, CONTEXT)
         adapted = predict(model, coef, intercept, history[CONTEXT])
+        effects, reference = contributions(model, coef, CONTEXT, history[CONTEXT])
+        reconstructed = reference + model[-1].intercept_ + intercept + effects.sum(axis=2)
+        np.testing.assert_allclose(reconstructed, adapted + history.baseline.to_numpy()[:, None])
         self.assertGreater(adapted.mean(), model.predict(history[CONTEXT]).mean())
         coef, intercept = fit_personal(model, history.head(4), CONTEXT)
         np.testing.assert_equal(coef, 0)
