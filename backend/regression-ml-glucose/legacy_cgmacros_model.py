@@ -11,8 +11,8 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.pipeline import make_pipeline
 from xgboost import XGBRegressor
 
-from .data import load_participants
-from .features import FEATURES, TARGETS, build_meals
+from backend.data import load_participants
+from backend.features import FEATURES, TARGETS, build_meals
 
 
 def train(meals, output):

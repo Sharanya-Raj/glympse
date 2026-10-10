@@ -52,7 +52,11 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse((build_meals(data).Timestamp == start).any())
 
     def test_train_and_save(self):
-        from .model import train
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("legacy_model", Path(__file__).parent / "regression-ml-glucose/legacy_cgmacros_model.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        train = module.train
         from .explain import main as explain
         with tempfile.TemporaryDirectory() as directory:
             meals = build_meals(self.fixture())
