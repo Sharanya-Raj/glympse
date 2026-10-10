@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from normalize import enrich, audit
+from .normalize import enrich, audit
 
 BACKEND = Path(__file__).resolve().parents[1]
 UNKNOWN = {"", "na", "n/a", "nan", "none", "null", "data not available"}
@@ -49,7 +49,10 @@ def prepare(data):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=BACKEND / "data/5min-glucose-data-cleaned.csv")
+    source = BACKEND / "data/5min-glucose-data-cleaned.csv"
+    if not source.exists():
+        source = BACKEND / "copies of old data/5min-glucose-data-cleaned.csv"
+    parser.add_argument("--input", type=Path, default=source)
     parser.add_argument("--output", type=Path, default=BACKEND / "data/5min-glucose-data-prepared.csv")
     args = parser.parse_args()
     if args.input.resolve() == args.output.resolve():

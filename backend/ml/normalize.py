@@ -1,6 +1,4 @@
 """Transparent text-to-numeric food/treatment features; no inferred nutrition."""
-import re
-
 import pandas as pd
 
 FOODS = {
