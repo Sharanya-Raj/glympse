@@ -7,11 +7,35 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .data import load_participants
+from .data import load_forecast_splits, load_participants
 from .features import build_meals
 
 
 class PipelineTests(unittest.TestCase):
+    def test_forecast_splits_exclude_leakage_and_reject_patient_overlap(self):
+        from .model import train_forecasts
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for patient, split in enumerate(("train", "validation", "test")):
+                pd.DataFrame({"Patient": [patient] * 3, "Recording": [f"r{patient}"] * 3,
+                    "forecast_start": pd.date_range("2025-01-08", periods=3),
+                    "target_day": [8, 9, 10], "target": [100., 110., 120.],
+                    "day7_glucose_mean": [99., 109., 119.], "history_food": [0., 1., 0.],
+                    "history_missing": [np.nan] * 3, "split": [split] * 3,
+                    "predicted_glucose_mean": [100., 110., 120.], "absolute_error": [0.] * 3
+                }).to_csv(root / f"{split}.csv", index=False)
+            splits, features = load_forecast_splits(root)
+            self.assertEqual(features, ["day7_glucose_mean", "history_food", "history_missing"])
+            report = train_forecasts(splits, features, root / "output")
+            self.assertEqual(report["train_rows"], 3)
+            self.assertEqual(report["metrics"]["test"]["rows"], 3)
+            self.assertTrue((root / "output/test_predictions.csv").exists())
+            frame = pd.read_csv(root / "test.csv")
+            frame["Patient"] = 0
+            frame.to_csv(root / "test.csv", index=False)
+            with self.assertRaisesRegex(ValueError, "Patients overlap"):
+                load_forecast_splits(root)
+
     def fixture(self):
         times = pd.date_range("2025-01-01", periods=10 * 288, freq="5min")
         frame = pd.DataFrame({"Timestamp": times, "Dexcom GL": 100.0,

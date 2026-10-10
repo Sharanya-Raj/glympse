@@ -1,4 +1,29 @@
-# CGMacros backend
+# Glucose forecasting backend
+
+## Sharanya prepared forecasts (default)
+
+From the repository root, run:
+
+```powershell
+uv run python -m backend.eda
+uv run python -m backend.model
+uv run python -m backend.explain
+```
+
+The default input is `data/sharanya_cg/`, containing `train.csv`,
+`validation.csv`, and `test.csv`. Override it with `--data PATH`.
+These are prepared daily mean-glucose forecasts, so the backend uses their
+`target` and supplied patient-disjoint splits rather than building meal responses.
+Only `day1_glucose_*` through `day7_glucose_*` and `history_*` columns are predictors.
+Patient IDs, recording IDs, target day, split, existing predictions, and errors
+are excluded. Imputation and model fitting use training rows only.
+
+The model saves `regression.joblib`, `metrics.json`, `validation_predictions.csv`,
+and `test_predictions.csv` under `backend/artifacts/`. EDA saves reports under
+`backend/reports/`; SHAP explains test rows by default (`--split validation`
+selects validation rows). The model predicts daily mean glucose, not a meal curve.
+
+## Raw CGMacros data
 
 Run commands from the repository root with Python 3.11 or newer:
 
@@ -12,7 +37,7 @@ python -m backend.explain
 Download and extract the real participant data from
 https://physionet.org/content/cgmacros/1.0.0/ into `backend/data/`.
 The loader searches recursively for `CGMacros-*.csv`. Data and generated results
-are excluded from Git. No real data has been downloaded or training performed yet.
+are excluded from Git.
 
 ## Modules
 
