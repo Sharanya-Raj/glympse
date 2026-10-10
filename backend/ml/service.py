@@ -60,7 +60,24 @@ def readiness(raw):
             "daily_cgm_counts": counts.astype(int).tolist()}
 
 
-def forecast_meal(raw, meal_time, dietary_intake, recent_cgm, bundle):
+def recent_from_history(raw, meal_time):
+    """Latest uploaded CGM readings at/before the meal, with a readable reason if too few."""
+    timestamp = pd.to_datetime(meal_time, utc=True).tz_convert(None)
+    window = raw[(raw.Date >= timestamp - pd.Timedelta(minutes=30)) & (raw.Date <= timestamp)]
+    window = window.dropna(subset=["CGM (mg / dl)"])
+    when = timestamp.strftime("%Y-%m-%d %H:%M")
+    if len(window) < 4:
+        raise ValueError(f"Your uploaded history has {len(window)} CGM reading(s) in the 30 minutes before "
+                         f"{when}; at least 4 are needed. Pick a meal time covered by your CGM data.")
+    if (timestamp - window.Date.max()).total_seconds() > 300:
+        raise ValueError(f"The latest uploaded CGM reading before {when} is at "
+                         f"{window.Date.max():%H:%M}; it must be within 5 minutes of the meal.")
+    return [{"timestamp": t.isoformat(), "glucose": float(g)}
+            for t, g in zip(window.Date, window["CGM (mg / dl)"])]
+
+
+def forecast_meal(raw, meal_time, dietary_intake, recent_cgm, bundle, treatments=None):
+    """treatments: optional {source column: text} taken at the meal, e.g. {"Insulin dose - s.c.": "Novolin R, 6 IU"}."""
     timestamp = pd.to_datetime(meal_time, utc=True).tz_convert(None)
     day = int((timestamp - raw.Date.min()).total_seconds() // 86400) + 1
     if day < 8:
@@ -101,6 +118,10 @@ def forecast_meal(raw, meal_time, dietary_intake, recent_cgm, bundle):
     if timestamp not in set(combined.Date):
         combined = pd.concat([combined, pd.DataFrame([{"Date": timestamp}])], ignore_index=True)
     combined.loc[combined.Date == timestamp, "Dietary intake"] = dietary_intake
+    for column, text in (treatments or {}).items():
+        if column not in COLUMNS:
+            raise ValueError(f"Unknown treatment column: {column}")
+        combined.loc[combined.Date == timestamp, column] = text
     combined["Patient"], combined["Recording"] = "current_user", "active"
     combined = validate_history(combined)
     current = prepared_history(combined).set_index("Date").sort_index()

@@ -10,3 +10,5 @@ data/
 *.csv
 *.json
 *.png
+.env
+backend/.env

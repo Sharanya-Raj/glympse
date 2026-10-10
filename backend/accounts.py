@@ -19,6 +19,8 @@ class Accounts:
                 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT, expires REAL);
                 CREATE TABLE IF NOT EXISTS forecasts (user_id TEXT, meal_time TEXT, version TEXT,
                     payload TEXT, PRIMARY KEY(user_id, meal_time));
+                CREATE TABLE IF NOT EXISTS simulations (user_id TEXT PRIMARY KEY, base_minutes REAL,
+                    anchor REAL, seconds_per_reading REAL, paused INTEGER);
             """)
 
     @contextmanager
@@ -40,6 +42,29 @@ class Accounts:
             db.execute("INSERT INTO users(id,username,salt,password_hash) VALUES(?,?,?,?)",
                 (user_id, username.casefold(), salt, self.password_hash(password, salt)))
         return user_id
+
+    def ensure_user(self, username, password):
+        """Create or re-key a configured account; configuration is the source of truth."""
+        with self.connect() as db:
+            row = db.execute("SELECT id,salt,password_hash FROM users WHERE username=?", (username.casefold(),)).fetchone()
+            if row and secrets.compare_digest(self.password_hash(password, row[1]), row[2]):
+                return row[0]
+            if row:
+                salt = secrets.token_hex(16)
+                db.execute("UPDATE users SET salt=?,password_hash=? WHERE id=?",
+                           (salt, self.password_hash(password, salt), row[0]))
+                db.execute("DELETE FROM sessions WHERE user_id=?", (row[0],))
+                return row[0]
+        return self.signup(username, password)
+
+    def username(self, user_id):
+        with self.connect() as db:
+            row = db.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+        return row[0] if row else None
+
+    def logout(self, token):
+        with self.connect() as db:
+            db.execute("DELETE FROM sessions WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
 
     def login(self, username, password):
         with self.connect() as db:
@@ -68,6 +93,22 @@ class Accounts:
                                  (csv, user_id, revision)).rowcount
             if changed != 1:
                 raise ValueError("Concurrent upload detected; retry")
+            db.execute("DELETE FROM forecasts WHERE user_id=?", (user_id,))
+
+    def simulation(self, user_id):
+        with self.connect() as db:
+            row = db.execute("SELECT base_minutes,anchor,seconds_per_reading,paused FROM simulations WHERE user_id=?",
+                             (user_id,)).fetchone()
+        return None if row is None else {"base_minutes": row[0], "anchor": row[1],
+                                         "seconds_per_reading": row[2], "paused": bool(row[3])}
+
+    def save_simulation(self, user_id, base_minutes, anchor, seconds_per_reading, paused):
+        with self.connect() as db:
+            db.execute("INSERT OR REPLACE INTO simulations VALUES(?,?,?,?,?)",
+                       (user_id, base_minutes, anchor, seconds_per_reading, int(paused)))
+
+    def clear_forecasts(self, user_id):
+        with self.connect() as db:
             db.execute("DELETE FROM forecasts WHERE user_id=?", (user_id,))
 
     def save_forecast(self, user_id, payload, revision):

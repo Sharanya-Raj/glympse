@@ -138,5 +138,22 @@ class PersonalizedTests(unittest.TestCase):
         np.testing.assert_equal(intercept, 0)
 
 
+class ExportTests(unittest.TestCase):
+    def test_fifteen_minute_cgm_fills_short_gaps_only(self):
+        from .export_patient import to_five_minute
+        times = list(pd.date_range("2021-01-01 00:00", periods=4, freq="15min")) + [pd.Timestamp("2021-01-01 02:00")]
+        raw = pd.DataFrame({"Date": times, "CGM (mg / dl)": [100, 115, 130, 145, 160],
+                            "Dietary intake": [None, "Rice 100 g", None, None, None]})
+        out = to_five_minute(raw).set_index("Date")
+        self.assertAlmostEqual(out.loc["2021-01-01 00:05", "CGM (mg / dl)"], 105)
+        self.assertAlmostEqual(out.loc["2021-01-01 00:40", "CGM (mg / dl)"], 140)
+        # 00:45 -> 02:00 is a 75-minute gap: no invented readings inside it.
+        self.assertTrue(out.loc["2021-01-01 00:50":"2021-01-01 01:55", "CGM (mg / dl)"].isna().all())
+        self.assertEqual(out.loc["2021-01-01 02:00", "CGM (mg / dl)"], 160)
+        # Meal text stays on its own timestamp only.
+        self.assertEqual(out["Dietary intake"].notna().sum(), 1)
+        self.assertEqual(out.loc["2021-01-01 00:15", "Dietary intake"], "Rice 100 g")
+
+
 if __name__ == "__main__":
     unittest.main()
