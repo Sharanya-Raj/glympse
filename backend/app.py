@@ -133,7 +133,9 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
         pairs = []
         for entry in seed_recordings:
             recording, _, own = entry.partition(":")
-            pairs.append((recording.strip(), Login(username="seed", password=own.strip() or default).password))
+            recording, _, name = recording.partition("=")
+            username = Login(username=name.strip(), password="x").username if name.strip() else ""
+            pairs.append((recording.strip(), Login(username="seed", password=own.strip() or default).password, username))
         seed_patients(accounts, Path(data_dir or os.environ.get("GLYIMPSE_DATA_DIR", ROOT / "data")), pairs)
 
     def user(credentials: HTTPAuthorizationCredentials = Depends(bearer)):

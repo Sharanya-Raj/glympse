@@ -43,6 +43,13 @@ class Accounts:
                 (user_id, username.casefold(), salt, self.password_hash(password, salt)))
         return user_id
 
+    def rename_user(self, old, new):
+        """Rename an account, keeping its history and replay; no-op when `old` is gone or `new` is taken."""
+        with self.connect() as db:
+            if db.execute("SELECT 1 FROM users WHERE username=?", (new.casefold(),)).fetchone():
+                return
+            db.execute("UPDATE users SET username=? WHERE username=?", (new.casefold(), old.casefold()))
+
     def ensure_user(self, username, password):
         """Create or re-key a configured account; configuration is the source of truth."""
         with self.connect() as db:

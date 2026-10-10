@@ -199,6 +199,11 @@ class ApiTests(unittest.TestCase):
             # Restarting doesn't reload or overwrite an account that already has history.
             again = self.make_client(directory, dev=True, **seeded)
             self.assertEqual(again.get("/history", headers=headers).json()["revision"], 1)
+            # A username in the config renames the existing account; its history comes along.
+            renamed = self.make_client(directory, dev=True, **{**seeded, "seed_recordings": ["9001_0_20250101=jane"]})
+            self.assertEqual(renamed.get("/me", headers=headers).json()["username"], "jane")
+            self.assertEqual(renamed.get("/history", headers=headers).json()["revision"], 1)
+            self.assertEqual(renamed.post("/sessions", json={"username": "patient9001", "password": "dev123"}).status_code, 401)
             with self.assertRaises(RuntimeError):
                 self.make_client(directory, dev=False, **seeded)
 
