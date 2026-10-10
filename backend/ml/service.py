@@ -76,15 +76,17 @@ def recent_from_history(raw, meal_time):
             for t, g in zip(window.Date, window["CGM (mg / dl)"])]
 
 
-def forecast_meal(raw, meal_time, dietary_intake, recent_cgm, bundle, treatments=None):
-    """treatments: optional {source column: text} taken at the meal, e.g. {"Insulin dose - s.c.": "Novolin R, 6 IU"}."""
+def forecast_meal(raw, meal_time, dietary_intake, recent_cgm, bundle, treatments=None, history=None):
+    """treatments: optional {source column: text} taken at the meal, e.g. {"Insulin dose - s.c.": "Novolin R, 6 IU"}.
+    history: recorded data to fit personal weights on, when `raw` carries simulated readings."""
     timestamp = pd.to_datetime(meal_time, utc=True).tz_convert(None)
     day = int((timestamp - raw.Date.min()).total_seconds() // 86400) + 1
     if day < 8:
         raise ValueError("Personal forecasts start on day 8 after seven days of history")
     cutoff = raw.Date.min() + pd.Timedelta(days=day - 1)
     window_start = cutoff - pd.Timedelta(days=7)
-    history_raw = raw[(raw.Date >= window_start) & (raw.Date < cutoff)].copy()
+    fit_source = raw if history is None else history
+    history_raw = fit_source[(fit_source.Date >= window_start) & (fit_source.Date < cutoff)].copy()
     blocks = ((history_raw.Date - window_start).dt.total_seconds() // 86400).astype(int)
     counts = history_raw.groupby(blocks)["CGM (mg / dl)"].count().reindex(range(7), fill_value=0)
     if history_raw.empty or history_raw.Date.max() < cutoff - pd.Timedelta(minutes=5) or (counts < 230).any():

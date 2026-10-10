@@ -10,7 +10,7 @@ data/
 *.csv
 *.json
 *.png
-.env
+*.env
 backend/.env
 
 # Committed offline data for the photo/typed-food feature. These negate the broad

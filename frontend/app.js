@@ -5,7 +5,7 @@
   const api = window.glyimpseAPI;
   const root = document.getElementById('app');
   const LOW = 70, HIGH = 180;            // target range, mg/dL
-  const SPIKE_RISE = 50;                 // rise from the pre-meal baseline that counts as a spike
+  const SPIKE_RISE = 50;                 // fallback rise when the server has no personal threshold
   const MIN = 60000, HOUR = 3600000, DAY = 86400000;
 
   // ---------------------------------------------------------------- helpers
@@ -64,7 +64,7 @@
     food_nuts: 'Nuts and seeds', food_other: 'Other foods', food_amount_grams: 'Portion size (grams of food)',
     food_amount_ml: 'Drink volume (ml)', food_quantity_unparsed: 'Portion size not stated',
     food_logged_now: 'Eating a meal now', minutes_since_logged_food: 'Time since your last meal',
-    no_prior_logged_food: 'No earlier meal recorded'
+    no_prior_logged_food: 'No earlier meal recorded', sugar_adjustment: 'Sugar in this meal (USDA, added on top of the model)'
   };
   function featureName(f) {
     if (FEATURE_NAMES[f]) return FEATURE_NAMES[f];
@@ -104,7 +104,7 @@
   // Everything comes from the replay: days 1-7, then day 8+ only up to the live clock's "now".
   function derive() {
     const L = S.live, R = S.raw;
-    const readings = R.readings.map(r => ({ t: ms(r.timestamp), g: r.glucose }));
+    const readings = R.readings.map(r => ({ t: ms(r.timestamp), g: r.glucose, rec: r.recorded ?? r.glucose }));
     const first = ms(L.first_reading);
     const dayOf = t => Math.floor((t - first) / DAY) + 1;
     const meals = [], treatments = [];
@@ -136,9 +136,21 @@
     const start = S.data.first + (d - 1) * DAY;
     return { start, ...rangeStats(between(start, start + DAY - 1)) };
   }
+  // Real (recorded) CGM only, never the simulated meal effect.
   function measuredPeak(t) {
     const after = between(t + 1, t + 120 * MIN);
-    return after.length ? round(Math.max(...after.map(r => r.g))) : null;
+    return after.length ? round(Math.max(...after.map(r => r.rec))) : null;
+  }
+  function measuredRise(t) {
+    const before = between(t - 15 * MIN, t), peak = measuredPeak(t);
+    return before.length && peak != null ? peak - before[before.length - 1].rec : null;
+  }
+  // This patient's spike lines from their own days 1-7 meals (server: personal.profile).
+  // A forecast's own spike.thresholds wins; older servers send no severe_rise.
+  function limits(spike) {
+    const T = (spike && spike.thresholds && spike.thresholds.severe_rise != null) ? spike.thresholds
+      : S.status && S.status.personal && S.status.personal.thresholds;
+    return T || { rise: SPIKE_RISE, severe_rise: 80, personal: false };
   }
 
   // ---------------------------------------------------------------- forecast summary
@@ -147,8 +159,9 @@
     const h = r.predictions.map(p => ({ min: p.minutes_after_meal, v: p.glucose_mg_dl, d: p.change_mg_dl, top: p.top_features }));
     const peak = h.reduce((a, b) => (b.v > a.v ? b : a));
     const rise = peak.v - base;
-    const level = r.spike ? r.spike.level : peak.v > HIGH || rise > SPIKE_RISE ? 'moderate' : 'none';
-    return { t, base, h, peak, rise, level, verdict: level === 'none' ? 'ok' : 'spike' };
+    const L = limits(r.spike);
+    const level = r.spike ? r.spike.level : rise > L.severe_rise ? 'high' : rise > L.rise ? 'moderate' : 'none';
+    return { t, base, h, peak, rise, level, limits: L, verdict: level === 'none' ? 'ok' : 'spike' };
   }
   const VERDICTS = { none: 'Unlikely to spike', moderate: 'Might spike', high: 'Likely to spike' };
   const hzClass = v => (v > HIGH ? 'high' : v < LOW ? 'low' : '');
@@ -297,6 +310,8 @@
   }
   function mealRequest(extra = {}) {
     const b = S.builder, req = { dietary_intake: mealText(), ...extra };
+    const foods = resolvedFoods().map(f => ({ name: f.name, grams: f.grams, carbs_g: f.carbs_g, sugar_g: f.sugar_g }));
+    if (foods.length) req.foods = foods;
     if (b.insulin.name && b.insulin.dose) req.insulin = { name: b.insulin.name, dose: +b.insulin.dose };
     if (b.tablet.name && b.tablet.dose) req.tablet = { name: b.tablet.name, dose: +b.tablet.dose };
     return req;
@@ -414,7 +429,7 @@
   async function predict() {
     const req = mealRequest();
     if (!req.dietary_intake) { S.predError = { message: 'Add at least one food with a portion.' }; return render(); }
-    S.predBusy = true; S.predError = null; S.pred = null; S.alts = null; S.altsError = null; render();
+    S.predBusy = true; S.predError = null; S.pred = null; S.alts = null; S.altsError = null; S.altsOpen = false; render();
     try {
       S.pred = await api.predict(req);
       S.predKey = formKey();
@@ -429,7 +444,7 @@
     S.altsBusy = true; render();
     try {
       const result = await api.alternatives(mealRequest({ meal_time: mealTime }));
-      if (S.predKey === key) S.alts = result;
+      if (S.predKey === key) { S.alts = result; S.altsOpen = result.alternatives.length > 0; }
     } catch (e) {
       if (S.predKey === key) S.altsError = e;
     }
@@ -437,6 +452,8 @@
   }
 
   function tryAlternative(text) {
+    S.altsOpen = false;
+    if (S.tab !== 'log') go('log');
     const items = itemsFromText(text);
     if (items.length) S.builder.items = items;
     predict();
@@ -454,6 +471,7 @@
         total: { kcal: sum('kcal'), carbs_g: sum('carbs_g'), protein_g: sum('protein_g'),
                  fat_g: sum('fat_g'), fiber_g: sum('fiber_g'), sugar_g: sum('sugar_g') } };
       await loadMeals();
+      applyLive(await api.live(), false);
       S.pred = null; S.predKey = null; S.alts = null; S.altsError = null;
       S.confirmBusy = false;
       go('today');
@@ -503,7 +521,7 @@
       `<option value="${s}" ${s === L.seconds_per_reading ? 'selected' : ''}>${SPEED_LABELS[s] || s + ' s'}</option>`).join('')}</select>
     <button class="link-btn ghost" data-action="live-restart">Restart day 8</button>
   </div>
-  <p class="hint">Days 1–7 are this patient's history. From day 8 the patient's real CGM plays back one reading per 5 minutes. Forecasts never change it.</p>
+  <p class="hint">Days 1–7 are this patient's history. From day 8 the patient's real CGM plays back one reading per 5 minutes. A confirmed meal adds its predicted effect on top (shown as simulated); what-if checks never change it.</p>
 </section>`;
   }
 
@@ -581,6 +599,9 @@
       const line = smooth(s);
       return `<path d="${line}L${f1(s[s.length - 1][0])} ${H}L${f1(s[0][0])} ${H}Z" fill="url(#gl-fill)"></path><path d="${line}" style="fill:none;stroke:#5ee3a0;stroke-width:3;stroke-linecap:round"></path>`;
     }).join('');
+    // Where a confirmed meal's effect was added, keep the recording visible underneath.
+    const simulated = pts.filter(p => Math.abs(p.g - p.rec) >= 0.5);
+    const recorded = simulated.length > 1 ? `<path d="${smooth(simulated.map(p => [x(p.t), y(p.rec)]))}" style="fill:none;stroke:#9aa3ab;stroke-width:1.5;stroke-dasharray:2 3"></path>` : '';
     // Confirmed meals: dashed forecast from the pre-meal glucose through +120 min, drawn over the real curve.
     const forecasts = savedMeals().map(m => [[ms(m.meal_time), m.base], ...m.h.map(z => [ms(m.meal_time) + z.min * MIN, z.v])])
       .filter(line => line[line.length - 1][0] >= start && line[0][0] <= end0)
@@ -595,8 +616,8 @@
   <line x1="0" x2="${W}" y1="${f1(y(HIGH))}" y2="${f1(y(HIGH))}" stroke="#ff8b85" stroke-opacity="0.45" stroke-dasharray="4 5"></line>
   <line x1="0" x2="${W}" y1="${f1(y(LOW))}" y2="${f1(y(LOW))}" stroke="#c4a5f5" stroke-opacity="0.45" stroke-dasharray="4 5"></line>
   <line x1="${f1(x(D.last.t))}" x2="${f1(x(D.last.t))}" y1="0" y2="${H}" stroke="#9aa3ab" stroke-opacity="0.5"></line>
-  ${paths}${forecasts}${dots}</svg><div class="chart-labels">${labels}</div>
-  <div class="legend sm"><span><i style="background:#5ee3a0"></i>Your real CGM</span><span><i style="background:#4fdfdc"></i>Forecast for a confirmed meal</span><span><i style="background:#ff8b85"></i>Meal in your record</span></div></div>`;
+  ${recorded}${paths}${forecasts}${dots}</svg><div class="chart-labels">${labels}</div>
+  <div class="legend sm"><span><i style="background:#5ee3a0"></i>${simulated.length ? 'Your CGM, simulated after a confirmed meal' : 'Your real CGM'}</span>${simulated.length ? '<span><i style="background:#9aa3ab"></i>What was actually recorded</span>' : ''}<span><i style="background:#4fdfdc"></i>Forecast for a confirmed meal</span><span><i style="background:#ff8b85"></i>Meal in your record</span></div></div>`;
   }
 
   function smooth(pts) {
@@ -611,16 +632,17 @@
 
   function mealRows(day) {
     const D = S.data;
+    const L = limits();
     const logged = D.meals.filter(m => m.day === day).map(m => {
-      const peak = measuredPeak(m.t);
-      return { t: m.t, name: m.food, sub: peak ? `measured peak ${peak} mg/dL` : 'peak not measured',
-        chip: peak == null ? ['neutral', 'Logged'] : peak > HIGH ? ['spike', 'Spike'] : ['ok', 'Steady'] };
+      const peak = measuredPeak(m.t), rise = measuredRise(m.t);
+      return { t: m.t, name: m.food, sub: peak ? `measured peak ${peak} mg/dL${rise != null ? `, rise ${rise >= 0 ? '+' : '−'}${Math.abs(round(rise))}` : ''}` : 'peak not measured',
+        chip: rise == null ? ['neutral', 'Logged'] : rise > L.severe_rise ? ['spike', 'Big spike'] : rise > L.rise ? ['warn', 'Spike'] : ['ok', 'Steady'] };
     });
     const planned = savedMeals().filter(m => m.day === day).map(m => {
       const peak = Math.max(...m.h.map(z => z.v)), actual = measuredPeak(ms(m.meal_time));
       const med = medicationText(m.medication);
       return { t: ms(m.meal_time), name: 'You confirmed: ' + m.food + (med ? ' · ' + med : ''),
-        sub: `forecast peak ~${round(peak)} mg/dL${actual != null ? ` · real peak so far ${actual}` : ''}`,
+        sub: `forecast peak ~${round(peak)} mg/dL (rise ${m.base != null ? '+' + round(peak - m.base) : '?'})${actual != null ? ` · recorded peak so far ${actual}` : ''}`,
         chip: [m.level === 'high' ? 'spike' : m.level === 'moderate' ? 'warn' : 'ok', VERDICTS[m.level]] };
     });
     return [...logged, ...planned].sort((a, b) => a.t - b.t);
@@ -653,7 +675,8 @@
       <circle cx="180" cy="24" r="11" style="fill:#4fdfdc;stroke:#0f1113;stroke-width:4"></circle></svg>
     <div class="ring-center"><div style="font-size:15px;color:var(--muted)">Latest · ${longDate(D.last.t)}</div>
       <div class="ring-value">${cur}</div><div class="ring-unit">mg/dL</div>
-      <div class="ring-trend ${cls}">${trend}</div><div style="font-size:13px;color:var(--muted);margin-top:6px">Last reading · ${clock(D.last.t)}</div></div></div>
+      <div class="ring-trend ${cls}">${trend}</div><div style="font-size:13px;color:var(--muted);margin-top:6px">${Math.abs(D.last.g - D.last.rec) >= 0.5
+        ? `Simulated from your confirmed meal · recorded ${round(D.last.rec)}` : `Last reading · ${clock(D.last.t)}`}</div></div></div>
   <div class="legend"><span><i style="background:var(--teal)"></i>In range (70–180), last 24 h</span><span><i style="background:var(--coral)"></i>Outside range</span></div>`;
       const mealCount = D.meals.filter(m => m.t > D.last.t - DAY).length;
       stats = `<div class="divider"></div><div class="stats3">
@@ -706,7 +729,7 @@
   <div class="verdict">${VERDICTS[F.level]}</div>
   <p class="meta">${esc(r.dietary_intake)}${med ? ' · ' + esc(med) : ''} · at ${clock(F.t)}</p>
   ${hypothesisChart(F)}
-  ${spikeWhy(r.spike, F)}
+  ${spikeWhy(r.spike, F)}${sugarNote(r)}
   <div class="facts"><span>Peak <strong>~${round(F.peak.v)} mg/dL</strong></span><span>Rise <strong>${F.rise >= 0 ? '+' : '−'}${Math.abs(round(F.rise))}</strong></span><span>Start <strong>${round(F.base)}</strong></span></div>
   ${horizonTiles(F)}
   <p class="peak">${esc(peakText(F))}</p>
@@ -722,34 +745,59 @@
     const W = 340, H = 150, a = F.t - 60 * MIN, b = F.t + 125 * MIN;
     const real = between(a, Math.min(b, S.data.now));
     const fc = [[F.t, F.base], ...F.h.map(z => [F.t + z.min * MIN, z.v])];
-    const values = [...real.map(r => r.g), ...fc.map(p => p[1]), HIGH + 10];
+    const L = F.limits, line = F.base + L.rise, big = F.base + L.severe_rise;
+    const values = [...real.map(r => r.g), ...fc.map(p => p[1]), big + 10];
     const lo = Math.min(60, ...values) - 5, hi = Math.max(...values) + 15;
     const x = t => (t - a) / (b - a) * W, y = v => H - 18 - (v - lo) / (hi - lo) * (H - 26);
     const realLine = real.length > 1 ? `<path d="${smooth(real.map(r => [x(r.t), y(r.g)]))}" style="fill:none;stroke:#5ee3a0;stroke-width:2.5"></path>` : '';
     const fcLine = `<path d="${smooth(fc.map(([t, v]) => [x(t), y(v)]))}" style="fill:none;stroke:${F.level === 'none' ? '#4fdfdc' : '#ff8b85'};stroke-width:3;stroke-dasharray:6 4"></path>`;
-    const dots = fc.slice(1).map(([t, v]) => `<circle cx="${f1(x(t))}" cy="${f1(y(v))}" r="3.5" fill="${v > HIGH ? '#ff8b85' : '#4fdfdc'}"></circle>`).join('');
+    const dots = fc.slice(1).map(([t, v]) => `<circle cx="${f1(x(t))}" cy="${f1(y(v))}" r="3.5" fill="${v > line ? '#ff8b85' : '#4fdfdc'}"></circle>`).join('');
     const ticks = [-60, 0, 30, 60, 90, 120].map(m => `<text x="${f1(x(F.t + m * MIN))}" y="${H - 3}" text-anchor="${m < 0 ? 'start' : m === 120 ? 'end' : 'middle'}">${m === 0 ? 'meal' : (m > 0 ? '+' : '') + m}</text>`).join('');
     return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Predicted glucose after this meal" style="width:100%;margin-top:12px;font-size:10px;fill:var(--muted-2)">
-  <line x1="0" x2="${W}" y1="${f1(y(HIGH))}" y2="${f1(y(HIGH))}" stroke="#ff8b85" stroke-opacity="0.5" stroke-dasharray="4 5"></line>
-  <text x="${W - 2}" y="${f1(y(HIGH) - 4)}" text-anchor="end">${HIGH} spike line</text>
+  <line x1="0" x2="${W}" y1="${f1(y(big))}" y2="${f1(y(big))}" stroke="#ff8b85" stroke-opacity="0.75" stroke-dasharray="2 4"></line>
+  <text x="3" y="${f1(y(big) - 4)}" style="fill:#ff8b85">Big spike${L.personal ? ' (90th pct)' : ''}: +${round(L.severe_rise)} → ${round(big)}</text>
+  <line x1="0" x2="${W}" y1="${f1(y(line))}" y2="${f1(y(line))}" stroke="#ffc46b" stroke-opacity="0.6" stroke-dasharray="4 5"></line>
+  <text x="3" y="${f1(y(line) + 11)}" style="fill:#ffc46b">Spike${L.personal ? ' (75th pct)' : ''}: +${round(L.rise)} → ${round(line)}</text>
   <line x1="${f1(x(F.t))}" x2="${f1(x(F.t))}" y1="0" y2="${H - 14}" stroke="#9aa3ab" stroke-opacity="0.4"></line>
   ${realLine}${fcLine}${dots}${ticks}</svg>
-  <div class="legend sm"><span><i style="background:#5ee3a0"></i>Real CGM</span><span><i style="background:${F.level === 'none' ? '#4fdfdc' : '#ff8b85'}"></i>Predicted if you eat this</span></div>`;
+  <div class="legend sm"><span><i style="background:#5ee3a0"></i>Real CGM</span><span><i style="background:${F.level === 'none' ? '#4fdfdc' : '#ff8b85'}"></i>Predicted if you eat this</span></div>
+  ${limitsNote(L)}`;
+  }
+
+  function limitsNote(L) {
+    const who = esc(S.user || 'you');
+    return L.personal
+      ? `<p class="meta" style="margin-top:8px">Spike lines for ${who}, from ${L.meals} of your meals in days 1–7: <b>spike</b> when the rise is above <b>+${round(L.rise)} mg/dL</b> (75th percentile of your meal rises), <b>big spike</b> above <b>+${round(L.severe_rise)} mg/dL</b> (90th percentile).</p>`
+      : `<p class="meta" style="margin-top:8px">Default spike lines: rise above +${round(L.rise)} mg/dL is a spike, above +${round(L.severe_rise)} a big spike. Restart the server to use your own (75th / 90th percentile of your meals).</p>`;
   }
 
   function spikeWhy(spike, F) {
-    if (!spike || spike.level === 'none') return '';
-    const reasons = [];
-    if (F.peak.v > spike.thresholds.high) reasons.push(`above ${spike.thresholds.high} mg/dL`);
-    if (F.rise > spike.thresholds.rise) reasons.push(`a rise of more than ${spike.thresholds.rise} mg/dL`);
+    if (!spike) return '';
+    const T = F.limits, rise = `+${Math.max(0, round(F.rise))}`;
+    const whose = T.personal ? `your usual rise after meals (from ${T.meals} meals in days 1–7)` : 'the default limit (too few clean meals in days 1–7)';
+    if (spike.level === 'none') return `<p class="meta" style="margin-top:10px">Predicted rise ${rise} mg/dL stays under your spike line of +${round(T.rise)}, based on ${whose}.</p>`;
     const sweet = spike.sweet_items || [];
     const drivers = spike.food_drivers.map(d => featureName(d.feature).replace(/ \(.*\)$/, '').toLowerCase());
-    const cause = sweet.length && spike.food_drivers.some(d => d.feature === 'food_sweet')
+    const cause = sweet.length && spike.food_drivers.some(d => d.feature === 'food_sweet' || d.feature === 'sugar_adjustment')
       ? `The sweet items (${sweet.map(esc).join(', ')}) push this forecast up the most.`
       : drivers.length ? `Biggest food effects in this forecast: ${esc(drivers.join(', '))}.` : '';
-    return `<p class="tip">Forecast peak is ${reasons.join(' and ')}. ${cause}</p>`;
+    const limit = spike.level === 'high' ? `your big-spike line of +${round(T.severe_rise)}` : `your spike line of +${round(T.rise)}`;
+    return `<p class="tip">Predicted rise ${rise} mg/dL is above ${limit}, based on ${whose}. ${cause}</p>`;
   }
 
+  // The model barely reacts to sugar, so the server adds grams of sugar × this patient's rise per gram of carbs.
+  function sugarNote(r) {
+    const s = r.sugar_adjustment;
+    if (!s || !s.sugar_g) return '';
+    const peak = Math.max(...s.mg_dl);
+    return `<p class="meta" style="margin-top:10px">Includes a sugar adjustment: ${s.sugar_g.toFixed(0)} g sugar × ${s.mg_dl_per_g} mg/dL per g
+    (${s.personal ? 'your own carb response' : 'default carb response'}) adds up to +${round(peak)} mg/dL on top of the model.
+    Sugar from ${s.items.some(i => i.source === 'usda') ? 'USDA' : 'a built-in USDA-based table'}.</p>`;
+  }
+
+  const altChip = level => level === 'none' ? ['ok', 'Avoids spike'] : level === 'moderate' ? ['warn', 'Smaller spike'] : ['spike', 'Still spikes'];
+
+  // Inline: only a button that reopens the "Try instead" pop-up.
   function alternativesCard(F) {
     if (F.level === 'none') return '';
     if (S.altsBusy) return `<div class="info pulse" role="status">Looking for changes that keep you in range…</div>`;
@@ -757,17 +805,59 @@
     if (!S.alts) return '';
     const rows = S.alts.alternatives;
     if (!rows.length) return `<div class="info">No simple change to try: add amounts (g or ml) to each food so the model can compare smaller portions.</div>`;
-    return `<section class="card mt" aria-label="Ways to avoid the spike"><div class="card-head"><span class="card-title">Try instead</span><span class="muted" style="font-size:14px">same time, same starting glucose</span></div>
-  ${rows.map(a => {
-      const peak = a.spike.peak_glucose_mg_dl, delta = a.peak_change_mg_dl;
-      const chip = a.spike.level === 'none' ? ['ok', 'Avoids spike'] : a.spike.level === 'moderate' ? ['warn', 'Smaller spike'] : ['spike', 'Still spikes'];
+    return `<button class="btn secondary" style="margin-top:14px" data-action="open-alts">Try instead: ${rows.length} way${rows.length === 1 ? '' : 's'} to avoid this spike</button>`;
+  }
+
+  function viewAlts() {
+    if (!S.altsOpen || !S.alts || !S.alts.alternatives.length) return '';
+    const saved = new Set(diet().map(d => d.dietary_intake));
+    return `<div class="scrim" data-action="close-alts"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Try instead">
+    <button class="grab" data-action="close-alts" aria-label="Close"><span></span></button>
+    <h2>Try instead</h2>
+    <p class="muted" style="margin:0 0 6px">Same time, same starting glucose as ${esc(S.pred ? S.pred.dietary_intake : 'your meal')}. Checked against your spike line of +${round(limits(S.pred && S.pred.spike).rise)} mg/dL.</p>
+    ${S.alts.alternatives.map(a => {
+      const peak = a.spike.peak_glucose_mg_dl, delta = a.peak_change_mg_dl, chip = altChip(a.spike.level);
+      const isSaved = saved.has(a.dietary_intake);
       return `<div class="row" style="align-items:flex-start"><div class="grow"><div class="name">${esc(a.label)}</div>
       <div class="sub" style="overflow-wrap:anywhere">${esc(a.dietary_intake)}</div>
-      <div class="sub">Peak ~${round(peak)} mg/dL (${delta <= 0 ? '−' : '+'}${Math.abs(round(delta))} vs. planned)</div>
-      <button class="link-btn" style="margin-top:8px" data-action="try-alt" data-value="${esc(a.dietary_intake)}">Use this meal</button></div>
+      <div class="sub">Peak ~${round(peak)} mg/dL, rise +${Math.max(0, round(a.spike.rise_mg_dl))} (${delta <= 0 ? '−' : '+'}${Math.abs(round(delta))} vs. planned)</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button class="link-btn" data-action="try-alt" data-value="${esc(a.dietary_intake)}">Use this meal</button>
+        <button class="link-btn ghost" data-action="save-diet" data-value="${esc(a.dietary_intake)}" ${isSaved ? 'disabled' : ''}>${isSaved ? 'In your recommended diet' : 'Add to my recommended diet'}</button></div></div>
       <span class="chip ${chip[0]}">${chip[1]}</span></div>`;
     }).join('')}
-  <p>Model forecasts only. Not medical advice; never change insulin or medication based on this.</p></section>`;
+    <p class="note">Model forecasts only. Not medical advice; never change insulin or medication based on this.</p>
+  </div>`;
+  }
+
+  // Recommended diet: alternatives the patient saved, kept per account in this browser.
+  const dietKey = () => 'glyimpse_diet_' + (S.user || '');
+  const diet = () => store.get(dietKey(), []);
+  function saveDiet(text) {
+    const a = S.alts && S.alts.alternatives.find(x => x.dietary_intake === text);
+    if (!a || diet().some(d => d.dietary_intake === text)) return;
+    store.set(dietKey(), [...diet(), { dietary_intake: text, label: a.label, instead_of: S.pred ? S.pred.dietary_intake : '',
+      peak: round(a.spike.peak_glucose_mg_dl), rise: round(a.spike.rise_mg_dl), level: a.spike.level, saved_at: new Date().toISOString() }]);
+    toast('Added to your recommended diet.');
+  }
+  function removeDiet(text) { store.set(dietKey(), diet().filter(d => d.dietary_intake !== text)); render(); }
+
+  function dietCard() {
+    const list = diet();
+    return `<section class="card mt" aria-label="Your recommended diet"><div class="card-head"><span class="card-title">Your recommended diet</span>
+    <span class="muted" style="font-size:14px">${list.length ? list.length + ' saved' : 'from "Try instead"'}</span></div>
+  ${list.length ? list.map(d => {
+      const chip = altChip(d.level);
+      return `<div class="row" style="align-items:flex-start"><div class="grow"><div class="name" style="overflow-wrap:anywhere">${esc(d.dietary_intake)}</div>
+      <div class="sub">${esc(d.label)}${d.instead_of ? ' · instead of ' + esc(d.instead_of) : ''}</div>
+      <div class="sub">Forecast peak ~${d.peak} mg/dL, rise +${Math.max(0, d.rise)}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button class="link-btn" data-action="try-alt" data-value="${esc(d.dietary_intake)}">Check it now</button>
+        <button class="link-btn ghost" data-action="remove-diet" data-value="${esc(d.dietary_intake)}">Remove</button></div></div>
+      <span class="chip ${chip[0]}">${chip[1]}</span></div>`;
+    }).join('') : '<p class="empty">When a meal might spike, pick a "Try instead" option and add it here.</p>'}
+  </section>`;
   }
 
   const options = (values, selected, label) => values.map(v =>
@@ -897,6 +987,7 @@
   <div class="field"><label>Tablet taken with this meal</label>${medRow('tablet')}
     <div class="hint">Medication is fed to the model exactly like doses in your record. It's for exploring the forecast, not dosing advice.</div></div>
   <button class="btn secondary" data-action="predict" ${S.predBusy || before8 ? 'disabled' : ''}>${S.predBusy ? 'Predicting…' : 'See what happens (what if)'}</button>
+  ${dietCard()}
   </div>
   <div class="log-result">${forecast || `<div class="log-placeholder"><div class="eyebrow">FORECAST</div><p>Check a meal and the predicted glucose curve shows up here, beside the foods you picked.</p></div>`}</div>
   <div class="log-foot">
@@ -1030,8 +1121,13 @@
     <dt>Day 8 starts</dt><dd>${day(st.day8_start)}</dd>
     <dt>Meals in your record</dt><dd>${D.meals.filter(m => m.t < D.day8).length}</dd>
     <dt>Insulin and medication entries</dt><dd>${D.treatments.filter(x => x.t < D.day8).length}</dd>
-    <dt>Meals you confirmed</dt><dd>${savedMeals().length}</dd></dl>`
+    <dt>Meals you confirmed</dt><dd>${savedMeals().length}</dd>
+    ${st.personal ? `<dt>Your usual rise after a meal</dt><dd>+${st.personal.typical_rise_mg_dl ?? '–'} mg/dL</dd>
+    <dt>Your spike line</dt><dd>+${st.personal.thresholds.rise} mg/dL${st.personal.thresholds.personal ? ` (from ${st.personal.thresholds.meals} meals)` : ' (default)'}</dd>
+    <dt>Your big-spike line</dt><dd>+${st.personal.thresholds.severe_rise} mg/dL</dd>
+    <dt>Rise per gram of carbs</dt><dd>${st.personal.carb_response.mg_dl_per_g} mg/dL${st.personal.carb_response.personal ? ` (from ${st.personal.carb_response.meals} meals)` : ' (default, too few meals)'}</dd>` : ''}</dl>`
     : '<p class="empty">No CGM record on this account.</p>'}
+  ${st ? dietCard() : ''}
 
   <button class="btn ghost" style="margin-top:28px;height:60px;border-radius:20px;justify-content:flex-start;padding:0 20px;font-weight:600" data-action="signout">${icon(IC.signout)}<span style="flex:1;text-align:left">Sign out</span>${icon(IC.chevron, 18)}</button>
   </div>
@@ -1050,7 +1146,7 @@
   function render() {
     const signedOut = S.tab === 'signin';
     root.className = 'app' + (signedOut ? ' no-nav' : '');
-    root.innerHTML = VIEWS[S.tab]() + (signedOut ? '' : viewSheet() + viewNav()) +
+    root.innerHTML = VIEWS[S.tab]() + (signedOut ? '' : viewSheet() + (S.tab === 'log' ? viewAlts() : '') + viewNav()) +
       (S.toast ? `<div class="toast${S.toastBad ? ' bad' : ''}" role="status">${esc(S.toast)}</div>` : '');
     syncLogButtons();
   }
@@ -1088,6 +1184,10 @@
     else if (a === 'pick-search') { pickSearchResult(+el.dataset.index, +el.dataset.fdcid, el.dataset.desc); }
     else if (a === 'predict') predict();
     else if (a === 'try-alt') tryAlternative(el.dataset.value);
+    else if (a === 'open-alts') { S.altsOpen = true; render(); }
+    else if (a === 'close-alts') { S.altsOpen = false; render(); }
+    else if (a === 'save-diet') saveDiet(el.dataset.value);
+    else if (a === 'remove-diet') removeDiet(el.dataset.value);
     else if (a === 'save-meal') confirmMeal();
     else if (a === 'live-toggle') control(S.live.paused ? 'play' : 'pause');
     else if (a === 'live-restart') { if (confirm('Restart the replay at the start of day 8? Confirmed meals are cleared.')) control('restart'); }
@@ -1129,7 +1229,10 @@
   root.addEventListener('submit', e => {
     if (e.target.id === 'signin-form') { e.preventDefault(); signIn(e.target); }
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetDay) { S.sheetDay = null; render(); } });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (S.altsOpen) { S.altsOpen = false; render(); } else if (S.sheetDay) { S.sheetDay = null; render(); }
+  });
 
   api.onUnauthorized = () => { resetSession(); S.signinError = 'Your sign-in expired. Please sign in again.'; render(); };
 

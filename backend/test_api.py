@@ -217,7 +217,13 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(spike["sweet_items"], ["cake", "orange juice"])
             self.assertIn(spike["peak_minutes_after_meal"], {30, 60, 90, 120})
             self.assertTrue({d["feature"] for d in spike["food_drivers"]} <= {
-                "food_starch", "food_sweet", "food_fruit", "food_amount_grams", "food_amount_ml"})
+                "food_starch", "food_sweet", "food_fruit", "food_amount_grams", "food_amount_ml", "sugar_adjustment"})
+            # Cake 80 g (35% sugar) + orange juice 250 ml (8.4%) from the built-in table.
+            sugar = predicted.json()["sugar_adjustment"]
+            self.assertAlmostEqual(sugar["sugar_g"], 49.0, places=0)
+            self.assertEqual({i["source"] for i in sugar["items"]}, {"table"})
+            self.assertEqual(set(spike["thresholds"]), {"rise", "severe_rise", "personal", "meals"})
+            self.assertIn("personal", client.get("/history", headers=headers).json())
             before = client.get("/explanations/daily", headers=headers).json()
             options = client.post("/predict/alternatives", headers=headers, json=meal)
             self.assertEqual(options.status_code, 200, options.text)
@@ -227,6 +233,8 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(labels["Half portion of sweet and starchy foods"], "Rice 50 g, cake 40 g, orange juice 125 ml")
             peaks = [row["spike"]["peak_glucose_mg_dl"] for row in body["alternatives"]]
             self.assertEqual(peaks, sorted(peaks))
+            skipped = next(r for r in body["alternatives"] if r["label"] == "Skip the sweet items")
+            self.assertLess(skipped["spike"]["peak_glucose_mg_dl"], spike["peak_glucose_mg_dl"])
             self.assertEqual(body["original"]["spike"]["peak_glucose_mg_dl"], spike["peak_glucose_mg_dl"])
             # What-if forecasts are not saved and don't change the daily ranking.
             self.assertEqual(client.get("/explanations/daily", headers=headers).json(), before)
@@ -261,6 +269,14 @@ class ApiTests(unittest.TestCase):
                                                    "Non-insulin hypoglycemic agents": "metformin 500 mg"})
             saved = client.get("/meals", headers=headers).json()["meals"]
             self.assertEqual([(m["meal_time"], m["dietary_intake"]) for m in saved], [("2025-01-08T08:00:00", "Rice 100 g")])
+            # The confirmed meal's own effect (with meal minus no meal) is added to the replay after it.
+            effect = saved[0]["meal_effect"]
+            self.assertEqual(len(effect), 4)
+            client.post("/live/control", headers=headers, json={"action": "seek", "minutes": 9 * 60 + 2})
+            after = {r["timestamp"]: r for r in client.get("/live", headers=headers).json()["readings"]}
+            at_60 = after["2025-01-08T09:00:00"]
+            self.assertAlmostEqual(at_60["glucose"] - at_60["recorded"], effect[1], places=0)
+            self.assertNotIn("recorded", after["2025-01-08T08:00:00"])
             bad = client.post("/predict", headers=headers, json={**meal, "insulin": {"name": "Mystery", "dose": 6}})
             self.assertEqual(bad.status_code, 422)
             self.assertEqual(client.post("/live/control", headers=headers,
