@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glyimpse — local backend</title>
+<style>
+  :root { --bg:#0f1113; --card:#181b1e; --line:#2a2d31; --text:#f2f4f5; --muted:#8a939b; --accent:#4fdfdc; --warn:#ff8b85; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:24px 16px 64px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; }
+  h1 { font-size:22px; margin:0; }
+  h2 { font-size:17px; margin:0 0 8px; }
+  h3 { font-size:15px; margin:16px 0 0; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, textarea { width:100%; padding:9px 11px; border-radius:9px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; }
+  textarea { resize:vertical; font-family:ui-monospace, Consolas, monospace; font-size:13px; }
+  button { margin:12px 8px 0 0; padding:9px 16px; border-radius:9px; border:0; background:var(--accent); color:#06201f; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:wait; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:13px; border:1px solid var(--line); color:var(--muted); }
+  .pill.ok { color:var(--accent); border-color:var(--accent); }
+  .pill.bad { color:var(--warn); border-color:var(--warn); }
+  .msg { margin-top:10px; font-size:14px; }
+  .msg.error { color:var(--warn); }
+  .muted { color:var(--muted); font-size:13px; }
+  .short { color:var(--warn); }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  svg { margin-top:12px; }
+  svg text { fill:var(--muted); font-size:11px; }
+  .hidden { display:none; }
+  @media (max-width:600px) { .row { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Glyimpse</h1>
+      <div class="muted" id="api-url"></div>
+    </div>
+    <span class="pill" id="health">Checking backend…</span>
+  </header>
+
+  <section>
+    <h2>Account</h2>
+    <div id="auth-form">
+      <div class="row">
+        <div><label for="username">Username</label><input id="username" autocomplete="username"></div>
+        <div><label for="password">Password (at least 12 characters)</label><input id="password" type="password" autocomplete="current-password"></div>
+      </div>
+      <button id="signin">Sign in</button><button id="signup" class="secondary">Create account</button>
+    </div>
+    <div id="auth-done" class="hidden">
+      <span class="pill ok">Signed in</span>
+      <button id="signout" class="secondary">Sign out</button>
+    </div>
+    <div class="msg" id="auth-msg"></div>
+  </section>
+
+  <section id="history-card" class="hidden">
+    <h2>Glucose history</h2>
+    <p class="muted">CSV with <code>Date</code> and <code>CGM (mg / dl)</code> columns, one patient. New uploads merge with what's already saved.</p>
+    <input id="csv" type="file" accept=".csv,text/csv">
+    <button id="upload">Upload</button>
+    <div class="msg" id="history-msg"></div>
+    <div id="history-status"></div>
+  </section>
+
+  <section id="predict-card" class="hidden">
+    <h2>Meal prediction</h2>
+    <p class="muted">Times use the same clock as your CSV. Predictions start on day 8 of your history.</p>
+    <div class="row">
+      <div><label for="meal-time">Meal time</label><input id="meal-time" type="datetime-local" step="60"></div>
+      <div><label for="meal">What you're eating</label><input id="meal" value="Rice 100 g Egg 50 g"></div>
+    </div>
+    <label for="recent">Recent CGM readings: minutes before meal, glucose (at least 4 within 30 minutes, latest within 5)</label>
+    <textarea id="recent" rows="5">30, 118
+20, 120
+10, 122
+0, 124</textarea>
+    <button id="predict">Predict</button>
+    <div class="msg" id="predict-msg"></div>
+    <div id="prediction"></div>
+  </section>
+
+  <section id="explain-card" class="hidden">
+    <h2>Daily top features</h2>
+    <button id="explain" class="secondary">Refresh</button>
+    <div class="msg" id="explain-msg"></div>
+    <div id="explanations"></div>
+  </section>
+</main>
+
+<script>
+  window.GLYIMPSE_API_URL = new URLSearchParams(location.search).get('api') || 'http://127.0.0.1:8000';
+</script>
+<script src="api.js"></script>
+<script>
+const api = window.glyimpseAPI;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const round = (n) => Math.round(n * 10) / 10;
+const signed = (n) => (n >= 0 ? '+' : '') + round(n);
+// Backend timestamps carry no offset and mean UTC; keep them on that clock instead of the browser's zone.
+const parseClock = (s) => new Date(s + 'Z');
+const formatClock = (d) => d.toISOString().slice(0, 19);
+const DIRECTIONS = { higher: 'Raises glucose', lower: 'Lowers glucose', balanced: 'Mixed' };
+
+function show(id, text, isError = false) {
+  $(id).textContent = text;
+  $(id).className = 'msg' + (isError ? ' error' : '');
+}
+
+async function run(button, msgId, task) {
+  button.disabled = true;
+  show(msgId, 'Working…');
+  try {
+    await task();
+  } catch (err) {
+    show(msgId, err.message, true);
+    if (err.status === 401) renderSignedIn();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function refreshHealth() {
+  const h = await api.checkHealth();
+  const [text, cls] = h.status !== 'ok' ? ['Backend offline', 'bad']
+    : h.shared_model_available ? ['Backend ready', 'ok'] : ['Model missing', 'bad'];
+  $('health').textContent = text;
+  $('health').className = 'pill ' + cls;
+}
+
+function renderSignedIn() {
+  const signedIn = Boolean(api.token);
+  $('auth-form').classList.toggle('hidden', signedIn);
+  $('auth-done').classList.toggle('hidden', !signedIn);
+  for (const id of ['history-card', 'predict-card', 'explain-card']) $(id).classList.toggle('hidden', !signedIn);
+}
+
+async function afterSignIn(text) {
+  $('password').value = '';
+  show('auth-msg', text);
+  renderSignedIn();
+  await Promise.all([loadHistory(), loadExplanations()]);
+}
+
+function renderHistory(h) {
+  const counts = h.daily_cgm_counts;
+  $('history-status').innerHTML = `
+    <p>${h.rows} rows saved &nbsp;<span class="pill ${h.ready_for_day8 ? 'ok' : 'bad'}">${h.ready_for_day8 ? 'Ready for day 8' : 'Not ready for day 8'}</span></p>
+    <p class="muted">Day 8 runs ${esc(h.day8_start.replace('T', ' '))} to ${esc(h.day8_end.replace('T', ' '))}. Each of days 1–7 needs at least 230 readings.</p>
+    <table>
+      <tr><th>Day</th>${counts.map((_, i) => `<th>${i + 1}</th>`).join('')}</tr>
+      <tr><th>Readings</th>${counts.map((c) => `<td class="${c >= 230 ? '' : 'short'}">${c}</td>`).join('')}</tr>
+    </table>`;
+  if (!$('meal-time').value) {
+    $('meal-time').value = formatClock(new Date(parseClock(h.day8_start).getTime() + 3600e3)).slice(0, 16);
+  }
+}
+
+async function loadHistory() {
+  try {
+    renderHistory(await api.getHistory());
+  } catch (err) {
+    if (err.status === 409) {
+      $('history-status').innerHTML = '<p class="muted">No history saved yet.</p>';
+    } else {
+      show('history-msg', err.message, true);
+      if (err.status === 401) renderSignedIn();
+    }
+  }
+}
+
+function recentReadings(mealTime) {
+  return $('recent').value.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+    const [minutes, glucose] = line.split(/[,\s]+/).map(Number);
+    if (!Number.isFinite(minutes) || !Number.isFinite(glucose)) {
+      throw new Error(`Can't read "${line}"; use: minutes before meal, glucose`);
+    }
+    return { timestamp: formatClock(new Date(mealTime.getTime() - minutes * 60e3)), glucose };
+  });
+}
+
+function chart(points) {
+  const W = 560, H = 200, left = 40, right = 16, top = 14, bottom = 26;
+  const values = points.map((p) => p.glucose);
+  const lo = Math.floor((Math.min(...values) - 10) / 10) * 10;
+  const hi = Math.ceil((Math.max(...values) + 10) / 10) * 10;
+  const maxMinutes = Math.max(...points.map((p) => p.minutes));
+  const x = (m) => left + (m / maxMinutes) * (W - left - right);
+  const y = (g) => top + (1 - (g - lo) / (hi - lo)) * (H - top - bottom);
+  const line = points.map((p) => `${x(p.minutes).toFixed(1)},${y(p.glucose).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Predicted glucose after the meal">
+    <line x1="${left}" x2="${W - right}" y1="${y(lo)}" y2="${y(lo)}" stroke="#2a2d31"/>
+    <line x1="${left}" x2="${W - right}" y1="${y(hi)}" y2="${y(hi)}" stroke="#2a2d31" stroke-dasharray="3 4"/>
+    <text x="${left - 6}" y="${y(hi) + 4}" text-anchor="end">${hi}</text>
+    <text x="${left - 6}" y="${y(lo) + 4}" text-anchor="end">${lo}</text>
+    ${points.map((p) => `<text x="${x(p.minutes)}" y="${H - 8}" text-anchor="middle">${p.minutes ? '+' + p.minutes + 'm' : 'meal'}</text>`).join('')}
+    <polyline points="${line}" fill="none" stroke="#4fdfdc" stroke-width="2.5"/>
+    ${points.map((p) => `<circle cx="${x(p.minutes)}" cy="${y(p.glucose)}" r="4" fill="#4fdfdc"><title>${round(p.glucose)} mg/dL</title></circle>`).join('')}
+  </svg>`;
+}
+
+function renderPrediction(p) {
+  const points = [{ minutes: 0, glucose: p.baseline_glucose },
+    ...p.predictions.map((x) => ({ minutes: x.minutes_after_meal, glucose: x.glucose_mg_dl }))];
+  const rows = p.predictions.map((x) => `<tr>
+    <td>+${x.minutes_after_meal} min</td><td>${round(x.glucose_mg_dl)}</td><td>${signed(x.change_mg_dl)}</td>
+    <td>${x.top_features.map((f) => `${esc(f.feature)} (${signed(f.contribution_mg_dl)})`).join(', ') || '—'}</td></tr>`).join('');
+  $('prediction').innerHTML = `
+    <p>Starting at <strong>${round(p.baseline_glucose)} mg/dL</strong> on day ${p.day}.
+      ${p.personalized ? `Personalized from ${p.personal_training_meals} of your meals.`
+        : `Population model only: ${p.personal_training_meals} usable personal meals, 5 needed to personalize.`}</p>
+    ${chart(points)}
+    <table><tr><th>Time</th><th>Glucose (mg/dL)</th><th>Change</th><th>Top contributors (mg/dL)</th></tr>${rows}</table>`;
+}
+
+async function loadExplanations() {
+  try {
+    const e = await api.getDailyExplanations();
+    show('explain-msg', '');
+    if (!e.days.length) {
+      $('explanations').innerHTML = `<p class="muted">${esc(e.message || 'No predictions yet.')}</p>`;
+      return;
+    }
+    $('explanations').innerHTML = e.days.map((d) => `<h3>Day ${d.day}</h3>
+      <table><tr><th>#</th><th>Feature</th><th>Average size (mg/dL)</th><th>Effect</th><th>Forecast points</th></tr>
+      ${d.top_features.map((f) => `<tr><td>${f.rank}</td><td>${esc(f.feature)}</td><td>${round(f.importance_mg_dl)}</td>
+        <td>${DIRECTIONS[f.direction] || esc(f.direction)}</td><td>${f.prediction_count}</td></tr>`).join('')}
+      </table>`).join('') + `<p class="muted">${esc(e.meaning)}</p>`;
+  } catch (err) {
+    show('explain-msg', err.message, true);
+    if (err.status === 401) renderSignedIn();
+  }
+}
+
+$('signin').onclick = (e) => run(e.target, 'auth-msg', async () => {
+  await api.signIn($('username').value.trim(), $('password').value);
+  await afterSignIn('Signed in.');
+});
+
+$('signup').onclick = (e) => run(e.target, 'auth-msg', async () => {
+  await api.signUp($('username').value.trim(), $('password').value);
+  await afterSignIn('Account created.');
+});
+
+$('signout').onclick = () => {
+  api.signOut();
+  show('auth-msg', 'Signed out.');
+  renderSignedIn();
+};
+
+$('upload').onclick = (e) => run(e.target, 'history-msg', async () => {
+  const file = $('csv').files[0];
+  if (!file) throw new Error('Choose a CSV file first');
+  renderHistory(await api.uploadHistoryCSV(file));
+  show('history-msg', `Uploaded ${file.name}.`);
+  await loadExplanations();
+});
+
+$('predict').onclick = (e) => run(e.target, 'predict-msg', async () => {
+  if (!$('meal-time').value) throw new Error('Pick a meal time');
+  const mealTime = parseClock($('meal-time').value);
+  renderPrediction(await api.predict(formatClock(mealTime), $('meal').value.trim(), recentReadings(mealTime)));
+  show('predict-msg', '');
+  await loadExplanations();
+});
+
+$('explain').onclick = (e) => run(e.target, 'explain-msg', loadExplanations);
+
+$('api-url').textContent = 'Backend: ' + api.baseUrl;
+renderSignedIn();
+refreshHealth();
+if (api.token) {
+  loadHistory();
+  loadExplanations();
+}
+</script>
+</body>
+</html>
