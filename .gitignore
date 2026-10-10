@@ -17,3 +17,15 @@ backend/.env
 # data/ , *.json and *.csv ignores above so the demo works with no network call.
 !backend/food/data/
 !backend/food/data/**
+
+# Generated Lambda build files
+backend/build/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local secrets
+.env
+.env.*
+!.env.example
