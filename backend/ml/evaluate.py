@@ -6,18 +6,12 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from .benchmarks import benchmark
 from .model import meal_examples, fit_population, fit_personal, predict, personal_history, HORIZONS, TARGETS
+from .explain import contributions, daily_top_three
 
 BACKEND = Path(__file__).resolve().parents[1]
-HORIZONS = [30, 60, 90, 120]
-TARGETS = [f"delta_{h}" for h in HORIZONS]
-CONTEXT = ["baseline", "premeal_slope", "premeal_mean", "premeal_std", "hour_sin", "hour_cos"]
 
 
 def run(data, output):
@@ -38,10 +32,9 @@ def run(data, output):
             # Refit once per forecast day, using completed outcomes from its previous 7 days.
             history = personal_history(personal, recording, start)
             coef, intercept = fit_personal(model, history, features)
-            z = model[:-1].transform(upcoming[features])
             pooled = model.predict(upcoming[features])
             adapted = predict(model, coef, intercept, upcoming[features])
-            combined = model[-1].coef_ + coef
+            glucose_effects, reference = contributions(model, coef, features, upcoming[features])
             # A simple personalized comparator: average previously observed meal change.
             historical_delta = history[TARGETS].mean().to_numpy() if len(history) else np.zeros(4)
             for i, (_, meal) in enumerate(upcoming.iterrows()):
@@ -61,9 +54,9 @@ def run(data, output):
                     for k, feature in enumerate(features):
                         explanations.append({"Patient": patient, "Recording": recording, "day": day,
                             "meal_time": meal.meal_time, "horizon_minutes": horizon, "feature": feature,
-                            "contribution": z[i, k] * combined[j, k]})
-                    reconstructed = (meal.baseline + model[-1].intercept_[j] + intercept[j]
-                                     + np.sum(z[i] * combined[j]))
+                            "contribution": glucose_effects[i, j, k]})
+                    reconstructed = (reference + model[-1].intercept_[j] + intercept[j]
+                                     + np.sum(glucose_effects[i, j]))
                     assert np.isclose(reconstructed, meal.baseline + adapted[i, j])
             artifacts[(patient, recording, int(day))] = {
                 "population": model, "personal_coefficients": coef,
@@ -87,6 +80,7 @@ def run(data, output):
     scores.to_csv(output / "patient_metrics.csv", index=False)
     effects = pd.DataFrame(explanations)
     effects.to_csv(output / "feature_contributions.csv", index=False)
+    daily_top_three(effects).to_csv(output / "daily_top_features.csv", index=False)
     ranking = effects.assign(absolute_contribution=effects.contribution.abs()).groupby(
         ["Patient", "horizon_minutes", "feature"]).agg(
             mean_absolute_contribution=("absolute_contribution", "mean"),

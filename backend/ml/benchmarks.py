@@ -38,12 +38,39 @@ def interval(values):
     return np.quantile(draws, [.025, .975])
 
 
+def export_daily_comparisons(results, output):
+    """Save individual day-8 forecasts and daily personalized tolerance scores."""
+    columns = ["Patient", "Recording", "day", "meal_time", "horizon_minutes",
+               "actual_glucose", "predicted_glucose"]
+    comparison = results.loc[results.day == 8, columns].copy()
+    comparison["error_mg_dl"] = comparison.predicted_glucose - comparison.actual_glucose
+    comparison["absolute_error_mg_dl"] = comparison.error_mg_dl.abs()
+    comparison["absolute_percentage_error"] = (
+        100 * comparison.absolute_error_mg_dl / comparison.actual_glucose.where(comparison.actual_glucose > 0))
+    comparison["within_20_mg_dl"] = comparison.absolute_error_mg_dl <= 20
+    comparison["within_15_percent"] = (comparison.absolute_percentage_error <= 15).where(
+        comparison.actual_glucose > 0)
+    comparison = comparison.sort_values(["Patient", "Recording", "meal_time", "horizon_minutes"])
+    daily_rows = []
+    for (patient, recording, day), group in results.groupby(["Patient", "Recording", "day"]):
+        for horizon, subset in [("all", group), *list(group.groupby("horizon_minutes"))]:
+            daily_rows.append({"Patient": patient, "Recording": recording, "day": day,
+                               "horizon_minutes": horizon, "meals": subset.meal_time.nunique(),
+                               **scores(subset, "predicted_glucose")})
+    daily = pd.DataFrame(daily_rows)
+    comparison.to_csv(output / "day8_actual_vs_predicted.csv", index=False)
+    daily.to_csv(output / "daily_accuracy.csv", index=False)
+    daily[daily.day == 8].to_csv(output / "day8_accuracy.csv", index=False)
+    return comparison, daily
+
+
 def benchmark(results, output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     results = results.copy()
     if "personal_mean_prediction" not in results:
         raise ValueError("Run python -m backend.ml.evaluate to produce benchmark predictions")
+    export_daily_comparisons(results, output)
     patient_rows, horizon_rows, day_rows, paired = [], [], [], []
     for (patient, horizon), group in results.groupby(["Patient", "horizon_minutes"]):
         for name, column in MODELS.items():
