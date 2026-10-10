@@ -11,3 +11,7 @@ Pillow>=10,<13
 httpx>=0.28,<1
 transformers>=4.40,<5
 torch>=2.2
+
+# sounddevice is only needed for CLI microphone recording; browsers record their own audio.
+sounddevice>=0.5,<1
+google-genai>=1.30,<2

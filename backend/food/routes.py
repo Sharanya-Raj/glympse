@@ -2,6 +2,7 @@
 
 Endpoints (no /api prefix, matching the rest of this app):
   POST /food/identify          multipart "image"  -> predictions + needs_confirmation
+  POST /food/dictate           multipart "audio"  -> transcript + foods + USDA nutrition
   GET  /food/nutrients?label=  classifier label   -> nutrition record (cache-first)
   GET  /food/nutrients/{fdcId} USDA fdcId          -> nutrition record
   GET  /food/search?q=         free text           -> up to 10 matches (powers "none of these")
@@ -16,6 +17,10 @@ from . import identify as idf
 from . import usda
 from .cache import FoodCache
 from .nutrition import build_nutrition
+
+MAX_DICTATION_BYTES = 10 * 1024 * 1024
+AUDIO_TYPES = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a",
+               "audio/wav": "wav", "audio/x-wav": "wav", "audio/mpeg": "mp3"}
 
 
 def build_food_router(user_dependency, cache=None, threshold=None):
@@ -50,6 +55,47 @@ def build_food_router(user_dependency, cache=None, threshold=None):
             raise HTTPException(404, f"No USDA match for '{display}'.")
         top = foods[0]
         return nutrition_from_detail(top.get("fdcId"), top.get("description", ""), top.get("dataType", ""))
+
+    @router.post("/dictate")
+    def dictate(audio: UploadFile = File(...), user_id=Depends(user_dependency)):
+        # A synchronous route keeps provider calls/retries off the ASGI event loop.
+        from . import meal
+
+        mime = (audio.content_type or "").split(";")[0].strip().lower()
+        if mime not in AUDIO_TYPES:
+            raise HTTPException(415, "Use WebM, Ogg, MP4, WAV, or MP3 audio.")
+        content = audio.file.read(MAX_DICTATION_BYTES + 1)
+        if len(content) > MAX_DICTATION_BYTES:
+            raise HTTPException(413, "Dictation must be at most 10 MB.")
+        if not content:
+            raise HTTPException(422, "No audio captured. Record your meal again.")
+        try:
+            stt_key = meal.elevenlabs_key()
+            gemini_key = meal.gemini_key()
+            usda.api_key()
+            gemini = meal.Gemini(gemini_key)
+        except (meal.MealError, usda.UsdaError) as exc:
+            raise HTTPException(503, str(exc)) from exc
+        try:
+            transcript = meal.transcribe(content, "meal." + AUDIO_TYPES[mime], mime, stt_key)
+            interpretation = meal.interpret_meal(transcript, gemini)
+            items = meal.match_items(interpretation.items, cache.food_map,
+                                    lambda term: usda.search_foods(term, page_size=meal.CANDIDATE_LIMIT), gemini)
+            records = {}
+            for item in items:
+                match = item["match"]
+                if match and str(match["fdcId"]) not in records:
+                    try:
+                        records[str(match["fdcId"])] = nutrition_from_detail(
+                            match["fdcId"], match.get("description", ""), match.get("dataType", ""))
+                    except HTTPException as exc:
+                        item["warnings"].append(str(exc.detail))
+            meal.attach_nutrition(items, records, gemini=gemini)
+            return meal.build_meal(transcript, False, interpretation, items, gemini.model, True)
+        except meal.MealError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        finally:
+            gemini.close()
 
     @router.post("/identify")
     async def food_identify(image: UploadFile = File(...), user_id=Depends(user_dependency)):

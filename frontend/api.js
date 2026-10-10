@@ -41,17 +41,18 @@
       else localStorage.removeItem(TOKEN_KEY);
     }
 
-    async request(method, path, { json, form, auth = true, signIn = false } = {}) {
+    async request(method, path, { json, form, auth = true, signIn = false, signal } = {}) {
       const headers = {};
       if (json !== undefined) headers['Content-Type'] = 'application/json';
       if (auth && this.token) headers['Authorization'] = `Bearer ${this.token}`;
       let res;
       try {
         res = await fetch(this.baseUrl + path, {
-          method, headers,
+          method, headers, signal,
           body: json !== undefined ? JSON.stringify(json) : form
         });
       } catch (err) {
+        if (err.name === 'AbortError') throw err;
         throw new ApiError('offline',
           `Can't reach the Glyimpse server at ${this.serverLabel}. Check that the backend is running, then try again.`, 0);
       }
@@ -76,6 +77,7 @@
         case 422:
           throw new ApiError('invalid', detail || 'The server could not use that input.', 422);
         case 503:
+          if (path.startsWith('/food/')) throw new ApiError('unavailable', detail || 'Food service unavailable.', 503);
           throw new ApiError('model_missing',
             'The prediction model is missing on the server. An operator needs to run: python -m backend.ml.train', 503);
         default:
@@ -128,6 +130,7 @@
     // --- Photo/typed food -> USDA nutrients & standard portions ---
     /** Identify a food photo (FormData with an "image" field). -> { predictions, needs_confirmation }. */
     identifyFood(form) { return this.request('POST', '/food/identify', { form }); }
+    dictateMeal(form, signal) { return this.request('POST', '/food/dictate', { form, signal }); }
     /** USDA nutrients + standard portions for a classifier label or typed food name. */
     foodNutrients(label) { return this.request('GET', '/food/nutrients?label=' + encodeURIComponent(label)); }
     /** USDA nutrients + standard portions for a specific fdcId (e.g. a "none of these" search pick). */
