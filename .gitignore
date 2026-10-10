@@ -7,3 +7,6 @@ backend/reports/
 backend/artifacts/
 backend/runtime/
 data/
+*.csv
+*.json
+*.png
