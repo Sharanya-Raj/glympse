@@ -50,6 +50,24 @@ FOODS = [
     ("Orange juice", "ml", [200, 250, 330, 500]),
 ]
 
+# Approximate USDA values per 100 g (or 100 ml): (carbohydrate g, total sugars g). Used only when the
+# meal builder didn't send USDA numbers itself; longer names win, so "steamed pork bun" beats "pork".
+NUTRITION = {
+    "rice": (28, 0.1), "coarse grain": (25, 0.5), "coarse grain steamed bread": (45, 2), "steamed bread": (47, 2),
+    "steamed bun": (47, 3), "steamed pork bun": (40, 4), "steamed vegetable bun": (40, 3), "bun": (45, 3),
+    "bread": (49, 5), "buckwheat bread": (45, 4), "noodles": (25, 0.5), "noodle": (25, 0.5),
+    "buckwheat noodles": (24, 0.5), "wonton": (25, 1), "dumpling": (25, 1), "porridge": (9, 0.1),
+    "congee": (9, 0.1), "oat": (12, 0.5), "millet": (24, 0.2), "pasta": (31, 0.6), "cereal": (70, 10),
+    "corn": (21, 4.5), "potato": (17, 0.8), "sweet potato": (20, 6.5), "taro": (26, 0.5), "yam": (27, 0.5),
+    "egg": (1, 0.4), "boiled egg": (1, 1), "fish": (0, 0), "shrimp": (0, 0), "beef": (0, 0), "pork": (0, 0),
+    "chicken": (0, 0), "meatball": (8, 1), "tofu": (2, 0.5), "vegetable": (5, 2), "boiled vegetable": (5, 2),
+    "cucumber": (3.6, 1.7), "cabbage": (6, 3), "spinach": (3.6, 0.4), "lettuce": (3, 1), "tomato": (3.9, 2.6),
+    "carrot": (10, 4.7), "radish": (3.4, 1.9), "apple": (14, 10), "orange": (12, 9), "banana": (23, 12),
+    "pear": (15, 10), "grape": (18, 15), "milk": (5, 5), "soybean milk": (3, 2), "yogurt": (5, 5),
+    "coffee": (0, 0), "beer": (3.6, 0), "biscuit": (70, 20), "cake": (55, 35), "cookie": (65, 30),
+    "candy": (95, 70), "sugar": (100, 100), "honey": (82, 82), "orange juice": (10, 8.4), "juice": (11, 9),
+}
+
 INSULINS = ["Insulin aspart", "Insulin aspart 30/70", "Insulin degludec", "Insulin detemir", "Insulin glargine",
             "Insulin glulisine", "Novolin R", "Novolin 30R", "Humulin 70/30", "Gansulin R"]
 INSULIN_DOSES = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24]

@@ -18,6 +18,7 @@ from .food.routes import build_food_router
 from .ml.explain import daily_top_three
 from .ml.service import (forecast_meal, load_population, readiness, recent_from_history,
                          validate_history)
+from .ml import personal
 from .ml.catalog import INSULINS, TABLETS, catalog, insulin_text, tablet_text
 from .ml.spike import assess, variants
 from .seed import seed_patients
@@ -64,10 +65,19 @@ class Dose(BaseModel):
     dose: float = Field(gt=0, le=5000, allow_inf_nan=False)
 
 
+class FoodItem(BaseModel):
+    # USDA numbers from the meal builder for one food in dietary_intake (matched by name).
+    name: str = Field(min_length=1, max_length=200)
+    grams: float = Field(gt=0, le=5000, allow_inf_nan=False)
+    carbs_g: float | None = Field(default=None, ge=0, le=5000, allow_inf_nan=False)
+    sugar_g: float | None = Field(default=None, ge=0, le=5000, allow_inf_nan=False)
+
+
 class MealRequest(BaseModel):
     # Omit to use the live clock's current time; later times are rejected (no peeking ahead).
     meal_time: str | None = None
     dietary_intake: str = Field(min_length=1, max_length=4000)
+    foods: list[FoodItem] | None = Field(default=None, max_length=30)
     # Omit to use the latest uploaded CGM readings in the 30 minutes before the meal.
     recent_cgm: list[Reading] | None = Field(default=None, min_length=4, max_length=30)
     insulin: Dose | None = None
@@ -138,10 +148,21 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
             raise HTTPException(409, "Upload glucose history first")
         return validate_history(pd.read_csv(io.StringIO(saved), dtype="string")), revision
 
-    def summary(raw, revision):
+    profiles, bundles = {}, {}
+
+    def profile(user_id, raw, revision):
+        """This patient's spike thresholds and carb response from their first seven days."""
+        key = (user_id, revision)
+        if key not in profiles:
+            if len(profiles) > 100:
+                profiles.clear()
+            profiles[key] = personal.profile(raw)
+        return profiles[key]
+
+    def summary(raw, revision, user_id=None):
         return {"rows": len(raw), "revision": revision,
                 "first_reading": raw.Date.min().isoformat(), "last_reading": raw.Date.max().isoformat(),
-                **readiness(raw)}
+                **readiness(raw), "personal": profile(user_id, raw, revision)}
 
     @app.get("/health")
     def health():
@@ -177,13 +198,19 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     @app.get("/history")
     def status(user_id=Depends(user)):
         raw, revision = history(user_id)
-        return summary(raw, revision)
+        return summary(raw, revision, user_id)
 
     def timeline(rows):
         rows = rows.reset_index(drop=True)
         stamps = rows.Date.dt.strftime("%Y-%m-%dT%H:%M:%S")
-        glucose = rows["CGM (mg / dl)"]
-        cgm = [{"timestamp": t, "glucose": float(g)} for t, g in zip(stamps[glucose.notna()], glucose.dropna())]
+        glucose = pd.to_numeric(rows["CGM (mg / dl)"], errors="coerce")
+        recorded = rows["recorded"] if "recorded" in rows else glucose
+        cgm = []
+        for t, g, r in zip(stamps[glucose.notna()], glucose.dropna(), recorded[glucose.notna()]):
+            reading = {"timestamp": t, "glucose": float(g)}
+            if abs(float(g) - float(r)) >= 0.05:
+                reading["recorded"] = float(r)   # simulated: a confirmed meal's effect is added
+            cgm.append(reading)
         text = rows[["Dietary intake", *TREATMENTS]].fillna("").astype(str).apply(lambda c: c.str.strip())
         events = []
         for i in text.index[text.ne("").any(axis=1)]:
@@ -210,8 +237,15 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
         now = start + pd.Timedelta(minutes=5 * (minutes // 5))
         return {"now": now, "minutes": minutes, "start": start, "end": end, **sim}
 
-    def live_state(raw, c, revision, since=None):
-        visible = raw[raw.Date <= c["now"]]
+    def confirmed(user_id):
+        """Saved confirmed meals for the current model; none when the model is missing."""
+        if not artifact.is_file():
+            return []
+        return accounts.forecasts(user_id, model_bundle()["version"])
+
+    def live_state(raw, c, revision, since=None, meals=None):
+        sim = personal.simulate(raw, meals or [])
+        visible = sim[sim.Date <= c["now"]]
         if since:
             visible = visible[visible.Date > pd.to_datetime(since, utc=True).tz_convert(None)]
         cgm, events = timeline(visible)
@@ -224,14 +258,16 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     @app.get("/history/readings")
     def readings(user_id=Depends(user)):
         raw, revision = history(user_id)
-        cgm, events = timeline(raw[raw.Date <= clock(user_id, raw)["now"]])
+        sim = personal.simulate(raw, confirmed(user_id))
+        cgm, events = timeline(sim[sim.Date <= clock(user_id, raw)["now"]])
         return {"revision": revision, "readings": cgm, "events": events}
 
     @app.get("/live")
     def live(since: str | None = None, user_id=Depends(user)):
-        """Everything up to the replay clock's current time (only new rows when `since` is given)."""
+        """Everything up to the replay clock's current time (only new rows when `since` is given).
+        Readings after a confirmed meal include its simulated effect; `recorded` keeps the real value."""
         raw, revision = history(user_id)
-        return live_state(raw, clock(user_id, raw), revision, since)
+        return live_state(raw, clock(user_id, raw), revision, since, confirmed(user_id))
 
     @app.post("/live/control")
     def control(payload: Control, user_id=Depends(user)):
@@ -254,7 +290,7 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
         else:
             minutes = payload.minutes
         accounts.save_simulation(user_id, minutes, time.time(), speed, paused)
-        return live_state(raw, clock(user_id, raw), revision)
+        return live_state(raw, clock(user_id, raw), revision, meals=confirmed(user_id))
 
     @app.get("/catalog")
     def choices():
@@ -272,19 +308,19 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
                 old = validate_history(pd.read_csv(io.StringIO(saved), dtype="string"))
                 raw = validate_history(pd.concat([old, raw]).drop_duplicates("Date", keep="last"))
             accounts.save_history(user_id, raw.to_csv(index=False), revision)
-            return summary(raw, revision + 1)
+            return summary(raw, revision + 1, user_id)
         except (ValueError, UnicodeError) as exc:
             raise HTTPException(422, str(exc))
 
-    def meal_inputs(payload, user_id, raw):
-        """Meal time (default: live clock now), recent CGM, and medication taken with the meal."""
+    def meal_inputs(payload, user_id, raw, sim):
+        """Meal time (default: live clock now), recent CGM (simulated after confirmed meals), and medication."""
         now = clock(user_id, raw)["now"]
         meal_time = pd.to_datetime(payload.meal_time, utc=True).tz_convert(None) if payload.meal_time else now
         if meal_time > now:
             raise HTTPException(422, f"The live clock is at {now:%b %d %H:%M}; forecasts can only start at or before now")
         stamp = meal_time.isoformat()
         recent = ([reading.model_dump() for reading in payload.recent_cgm] if payload.recent_cgm
-                  else recent_from_history(raw, stamp))
+                  else recent_from_history(sim, stamp))
         treatments = {}
         if payload.insulin:
             if payload.insulin.name not in INSULINS:
@@ -299,44 +335,66 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     def model_bundle():
         if not artifact.is_file():
             raise HTTPException(503, "Shared model missing; run python -m backend.ml.train")
-        return load_population(artifact)
+        stamp = artifact.stat().st_mtime_ns
+        if bundles.get("stamp") != stamp:
+            bundles.update(stamp=stamp, bundle=load_population(artifact))
+        return bundles["bundle"]
+
+    def meal_context(payload, user_id):
+        """Everything a meal forecast needs: recorded history, the simulated replay, and this patient's profile."""
+        raw, revision = history(user_id)
+        bundle = model_bundle()
+        meals = accounts.forecasts(user_id, bundle["version"])
+        sim = personal.simulate(raw, meals)
+        stamp, recent, treatments = meal_inputs(payload, user_id, raw, sim)
+        foods = [food.model_dump() for food in payload.foods or []]
+        return {"raw": raw, "revision": revision, "bundle": bundle, "model_raw": personal.with_meals(sim, meals),
+                "stamp": stamp, "recent": recent, "treatments": treatments, "foods": foods,
+                "me": profile(user_id, raw, revision)}
+
+    def forecast(ctx, text):
+        """Model forecast plus the patient's sugar response (which the model can't see)."""
+        result = forecast_meal(ctx["model_raw"], ctx["stamp"], text, ctx["recent"], ctx["bundle"],
+                               ctx["treatments"], history=ctx["raw"])
+        return personal.add_sugar(result, text, ctx["foods"], ctx["me"])
 
     @app.post("/predict")
     def prediction(payload: MealRequest, user_id=Depends(user)):
-        raw, revision = history(user_id)
-        bundle = model_bundle()
         try:
-            stamp, recent, treatments = meal_inputs(payload, user_id, raw)
-            result = forecast_meal(raw, stamp, payload.dietary_intake, recent, bundle, treatments)
-            spike = {**assess(result, payload.dietary_intake), "sweet_items": variants(payload.dietary_intake)["sweet_items"]}
-            meal = {**result, "dietary_intake": payload.dietary_intake, "medication": treatments, "spike": spike}
+            ctx = meal_context(payload, user_id)
+            text = payload.dietary_intake
+            result = forecast(ctx, text)
+            spike = {**assess(result, text, ctx["me"]["thresholds"]), "sweet_items": variants(text)["sweet_items"]}
+            meal = {**result, "dietary_intake": text, "medication": ctx["treatments"], "spike": spike}
             if payload.confirm:
-                accounts.save_forecast(user_id, meal, revision)
-            return {**meal, "recent_cgm": recent, "confirmed": payload.confirm}
+                without = forecast_meal(ctx["model_raw"], ctx["stamp"], "No food ingested", ctx["recent"],
+                                        ctx["bundle"], ctx["treatments"], history=ctx["raw"])
+                meal["meal_effect"] = personal.meal_effect(result, without)
+                accounts.save_forecast(user_id, meal, ctx["revision"])
+            return {**meal, "recent_cgm": ctx["recent"], "confirmed": payload.confirm}
         except ValueError as exc:
             raise HTTPException(422, str(exc))
 
     @app.get("/meals")
     def confirmed_meals(user_id=Depends(user)):
         """Meals the user confirmed eating, each with the forecast made at that time."""
-        keys = ["meal_time", "day", "dietary_intake", "medication", "baseline_glucose", "personalized", "predictions", "spike"]
+        keys = ["meal_time", "day", "dietary_intake", "medication", "baseline_glucose", "personalized", "predictions",
+                "spike", "meal_effect", "sugar_adjustment"]
         saved = accounts.forecasts(user_id, model_bundle()["version"])
         return {"meals": sorted(({k: m.get(k) for k in keys} for m in saved), key=lambda m: m["meal_time"])}
 
     @app.post("/predict/alternatives")
     def alternatives(payload: MealRequest, user_id=Depends(user)):
         """What-if forecasts for changed versions of the planned meal. Nothing is saved."""
-        raw, _ = history(user_id)
-        bundle = model_bundle()
         try:
-            stamp, recent, treatments = meal_inputs(payload, user_id, raw)
-            original = assess(forecast_meal(raw, stamp, payload.dietary_intake, recent, bundle, treatments),
-                              payload.dietary_intake)
+            ctx = meal_context(payload, user_id)
+            limits = ctx["me"]["thresholds"]
+            original = assess(forecast(ctx, payload.dietary_intake), payload.dietary_intake, limits)
             options = variants(payload.dietary_intake)
             rows = []
             for option in options["variants"]:
-                result = forecast_meal(raw, stamp, option["dietary_intake"], recent, bundle, treatments)
-                spike = assess(result, option["dietary_intake"])
+                result = forecast(ctx, option["dietary_intake"])
+                spike = assess(result, option["dietary_intake"], limits)
                 rows.append({**option, "spike": spike, "predictions": result["predictions"],
                              "peak_change_mg_dl": spike["peak_glucose_mg_dl"] - original["peak_glucose_mg_dl"]})
         except ValueError as exc:
