@@ -5,7 +5,8 @@ Run commands from the repository root with Python 3.11 or newer:
 ```powershell
 python -m pip install -r backend/requirements.txt
 python -m backend.eda --data backend/data
-python -m backend.model --data backend/data
+python backend/regression-ml-glucose/prepare_data.py
+python backend/regression-ml-glucose/model.py
 python -m backend.explain
 ```
 
@@ -20,7 +21,11 @@ are excluded from Git. No real data has been downloaded or training performed ye
 - `eda.py`: missingness, participant coverage, daily glucose summaries, usable
   meal counts, feature/target summaries, and extracted meal table (CSV reports).
 - `features.py`: pre-meal features and timestamp-aligned two-hour labels.
-- `model.py`: XGBoost multi-output regression, day 8 evaluation, saved pipeline.
+- `regression-ml-glucose/model.py`: Ridge regression for the uploaded data's
+  day 8 average CGM. See that folder's README for preparation, patient splits,
+  feature mappings, and results. The prior CGMacros model is retained there as
+  `legacy_cgmacros_model.py`; the original EDA/explain modules target CGMacros,
+  not the new linear-model artifact.
 - `explain.py`: day 8 SHAP contributions and feature rankings for a chosen target.
 
 ## Adaptation rationale
