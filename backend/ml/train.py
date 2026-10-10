@@ -11,8 +11,9 @@ from .service import prepared_history
 
 
 def main():
-    backend = Path(__file__).resolve().parents[1]
-    source = backend / "copies of old data/5min-glucose-data.csv"
+    backend = Path(__file__).resolve().parent.parent
+    # source = backend / "copies of old data/5min-glucose-data.csv"
+    source = "C:\\Users\\omran\\code\\glyimpse\\data\\shanghai_csv\\Copy of T2DM_all_5min.xlsx - T2DM_5min.csv"
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, default=source)
     parser.add_argument("--output", type=Path, default=backend / "artifacts/population.joblib")
