@@ -316,6 +316,7 @@
       return { name: item.name, amount: '', grams, customGrams: grams ?? '',
         portionKey: portionIndex != null ? String(portionIndex) : 'custom',
         portionCount: n?.serving?.portion_count ?? 1,
+        portionAssumed: n?.serving?.assumed ?? false,
         dictatedAmount: item.quantity != null ? `${item.quantity} ${item.unit || item.name}` : null,
         fdcId: match?.fdcId ?? null, per100: grams == null,
         usda: n ? { ...n, fdcId: match.fdcId, description: match.description, source: match.dataType } : null,
@@ -342,11 +343,11 @@
         <strong>Review your dictated meal</strong><p>${esc(result.transcript)}</p>
         <ul>${result.items.map(item => `<li>${esc(item.name)}${item.quantity != null ? ` · ${esc(item.quantity)} ${esc(item.unit || '')}` : ''}
           <div class="hint">${item.match ? `USDA: ${esc(item.match.description)}` : 'No USDA match. You can search or edit this food.'}
-          ${item.nutrition?.serving ? ` · Total: ${item.nutrition.serving.grams} g (${esc(item.nutrition.serving.basis || 'stated amount')})` : ' · Portion needs review.'}</div>
+          ${item.nutrition?.serving ? ` · Total: ${item.nutrition.serving.grams} g (${esc(item.nutrition.serving.basis || 'stated amount')})${item.nutrition.serving.assumed ? '. Please double-check this assumed amount.' : ''}` : ' · Could not convert this amount to grams.'}</div>
           ${(item.warnings || []).map(w => `<div class="hint">${esc(w)}</div>`).join('')}</li>`).join('')}</ul>
         ${(result.warnings || []).map(w => `<p class="hint">${esc(w)}</p>`).join('')}
         <button type="button" class="btn" data-action="dictate-use" ${S.predBusy || S.confirmBusy ? 'disabled' : ''}>Use dictated meal</button>
-        <p class="hint">Replaces the current food list. Review portions before predicting.</p>
+        <p class="hint">Replaces the current food list using the amounts above.</p>
       </div>` : ''}`;
   }
 
@@ -392,6 +393,20 @@
   }
 
   // ---- Look up USDA nutrients/portions for a row (by classifier label when known, else typed text).
+  function typedWeight(text) {
+    const match = text.match(/(?<![\w./-])(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?|\.\d+)\s*(kilograms?|kg|grams?|gm|g|ounces?|oz|pounds?|lbs?)\b/i);
+    if (!match) return null;
+    const quantity = match[1].split(/\s+/).reduce((sum, part) => {
+      const [n, d] = part.split('/').map(Number);
+      return sum + n / (d ?? 1);
+    }, 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return null;
+    const unit = match[2].toLowerCase();
+    const factor = /^(kg|kilogram)/.test(unit) ? 1000 : /^(oz|ounce)/.test(unit) ? 28.3495 : /^(lb|pound)/.test(unit) ? 453.592 : 1;
+    const name = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim().replace(/^of\s+/i, '').trim();
+    return name ? { name, grams: Math.round(quantity * factor * 10) / 10 } : null;
+  }
+
   async function lookupFood(i) {
     const item = S.builder.items[i];
     if (!item) return;
@@ -402,16 +417,22 @@
       const rec = item.fdcId ? await api.foodNutrientsById(item.fdcId) : await api.foodNutrients(query);
       item.usda = rec; item.per100 = false;
       if (item.portionKey === 'custom' && item.grams > 0) { item.customGrams = item.grams; }
-      else if (rec.default_portion) { item.portionKey = '0'; item.grams = Math.round(rec.default_portion.grams * (item.portionCount ?? 1) * 10) / 10; }
-      else { item.portionKey = 'per100'; item.grams = 100; }
+      else {
+        item.portionAssumed = true; item.portionCount = 1;
+        const portion = rec.default_portion || rec.portions?.[0];
+        const index = portion ? rec.portions.findIndex(p => p.label === portion.label && p.grams === portion.grams) : -1;
+        item.portionKey = index >= 0 ? String(index) : portion ? 'custom' : 'per100';
+        item.grams = portion?.grams ?? 100; item.customGrams = item.grams;
+      }
     } catch (e) {
-      item.usda = null; item.grams = null; item.lookupError = e;
+      item.usda = null; item.lookupError = e;
     }
     item.lookupBusy = false; render();
   }
 
   function setPortion(i, key) {
     const item = S.builder.items[i];
+    item.portionAssumed = false;
     item.portionKey = key;
     if (key === 'per100') item.grams = 100;
     else if (key === 'custom') item.grams = +item.customGrams || item.grams || 100;
@@ -953,6 +974,7 @@
     const selected = /^\d+$/.test(item.portionKey || '') ? u.portions[+item.portionKey] : null;
     const standard = selected
       ? `Selected amount: <b>${esc(item.portionCount ?? 1)} × ${esc(selected.label)} (${itemGrams(item)} g total)</b>`
+      : !noPortion ? `Selected amount: <b>${itemGrams(item)} g</b>`
       : dp ? `USDA reference portion: <b>${esc(dp.label)} (${dp.grams} g)</b>`
       : `USDA lists no standard portion for this food.`;
     const macros = `${showNum(m.kcal)} kcal · Carbs ${showNum(m.carbs_g)} g · Protein ${showNum(m.protein_g)} g · Fat ${showNum(m.fat_g)} g`;
@@ -961,7 +983,7 @@
     if (u.missing && u.missing.length) notes.push('USDA is missing: ' + u.missing.join(', ') + '.');
     return `<div class="card" style="margin-top:8px;padding:14px 16px">
     <div class="small" style="color:var(--teal);font-weight:700">${standard}</div>
-    <div style="margin-top:4px;font-size:13px;color:var(--muted-2)">Compare this to what's on your plate.</div>
+    ${item.portionAssumed ? `<div class="hint">${dp || selected ? 'A standard serving was assumed.' : 'No standard serving is available; 100 g was assumed.'} Please double-check the ${itemGrams(item)} g amount.</div>` : ''}
     <div style="margin-top:10px;font-size:15px">${per100 ? '<span class="muted small">per 100 g · </span>' : `<span class="muted small">for ${grams} g · </span>`}${macros}</div>
     <div class="row" style="margin-top:10px;gap:12px;align-items:center">
       <button type="button" class="link-btn ghost" data-action="toggle-per100" data-index="${item._i}" ${noPortion ? 'disabled' : ''}>${noPortion ? 'Choose a portion first' : per100 ? 'Show selected portion' : 'Show per 100 g'}</button>
@@ -1285,8 +1307,13 @@
       const item = S.builder.items[+d.item];
       if (d.part === 'name') {
         // A typed/chosen food: reset any photo/USDA state and look it up fresh in USDA.
-        item.name = t.value; item.label = null; item.selectedLabel = null; item.fdcId = null;
+        const stated = typedWeight(t.value);
+        item.name = stated?.name ?? t.value; item.label = null; item.selectedLabel = null; item.fdcId = null;
         item.predictions = null; item.needsConfirmation = false; item.portionKey = null;
+        item.grams = stated?.grams ?? null; item.customGrams = stated?.grams ?? '';
+        item.amount = ''; item.portionCount = 1; item.portionAssumed = false;
+        item.dictatedAmount = null; item.voiceWarnings = null;
+        if (stated) item.portionKey = 'custom';
         lookupFood(+d.item);  // async; re-renders with USDA portions + macros
       } else if (d.part === 'portion') {
         setPortion(+d.item, t.value);
@@ -1294,8 +1321,10 @@
         item.portionCount = Math.max(0, +t.value || 0);
         setPortion(+d.item, item.portionKey);
       } else if (d.part === 'custom-grams') {
+        item.portionAssumed = false;
         item.customGrams = t.value; item.grams = +t.value || null; render();
       } else if (d.part === 'amount') {
+        item.portionAssumed = false;
         if (t.value === 'custom') { item.portionKey = 'custom'; item.grams = itemGrams(item); item.customGrams = item.grams; }
         else { item.amount = +t.value; item.grams = null; item.portionKey = null; }
         render();

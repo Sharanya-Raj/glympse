@@ -403,11 +403,26 @@ class NutritionTests(unittest.TestCase):
         self.assertEqual(item["nutrition"]["serving"]["grams"], 316.0)
         self.assertIn("1 cup", item["nutrition"]["serving"]["basis"])
 
-    def test_unknown_amount_or_unit_stays_unknown(self):
-        items = meal.attach_nutrition([matched_item(None, None), matched_item(2, "bowl")], {"101": RECORD})
-        for item in items:
-            self.assertIsNone(item["nutrition"]["serving"])
-            self.assertEqual(item["nutrition"]["per_100g"]["kcal"], 130.0)
+    def test_only_missing_amount_uses_standard_serving_in_mixed_meal(self):
+        items = meal.attach_nutrition([matched_item(100, "g"), matched_item(None, None),
+                                      matched_item(2, "bowl")], {"101": RECORD})
+        explicit, assumed, unresolved = [i["nutrition"]["serving"] for i in items]
+        self.assertEqual(explicit["grams"], 100)
+        self.assertFalse(explicit["assumed"])
+        self.assertEqual(assumed["grams"], 158)
+        self.assertEqual(assumed["nutrients"]["kcal"], 205)
+        self.assertEqual(assumed["portion_count"], 1)
+        self.assertTrue(assumed["assumed"])
+        self.assertIsNone(items[1]["quantity"])
+        self.assertIsNone(unresolved)
+
+    def test_missing_amount_without_standard_serving_has_explicit_fallback(self):
+        record = {**RECORD, "portions": [], "default_portion": None}
+        item = meal.attach_nutrition([matched_item(None, None)], {"101": record})[0]
+        serving = item["nutrition"]["serving"]
+        self.assertEqual(serving["grams"], 100)
+        self.assertTrue(serving["assumed"])
+        self.assertIn("no standard serving", serving["basis"])
 
     def test_missing_record_and_unmatched_items(self):
         unmatched = {"name": "x", "quantity": None, "unit": None, "warnings": [], "match": None}
@@ -496,7 +511,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual([i["match_status"] for i in document["items"]], ["mapped", "matched"])
         self.assertEqual(document["items"][0]["nutrition"]["serving"]["grams"], 158.0)
         self.assertEqual(document["items"][1]["match"]["fdcId"], 101)
-        self.assertIsNone(document["items"][1]["nutrition"]["serving"])
+        self.assertTrue(document["items"][1]["nutrition"]["serving"]["assumed"])
         self.assertIsNotNone(gemini.calls[0]["image"])
         self.assertEqual([p.name for p in out.parent.iterdir()], ["meal.json"])  # no temp files left
 
