@@ -101,6 +101,11 @@
     reminders: store.get('glyimpse_reminders', [true, true, true])
   };
   let toastTimer = null, pollTimer = null;
+  const dictation = new window.MealDictation(api, () => {
+    const card = root.querySelector('#meal-dictation');
+    if (card) card.innerHTML = dictationCard();
+  });
+  window.addEventListener('pagehide', () => dictation.cancel());
 
   // Confirmed meals (server-side), shaped like the forecast summaries the views draw.
   const savedMeals = () => S.meals;
@@ -277,6 +282,7 @@
   }
 
   function go(tab) {
+    if (S.tab === 'log' && tab !== 'log') dictation.cancel();
     S.tab = tab; S.sheetDay = null; render(); window.scrollTo(0, 0);
   }
 
@@ -296,6 +302,7 @@
   }
 
   function resetSession() {
+    dictation.cancel();
     clearTimeout(pollTimer);
     Object.assign(S, { status: null, data: null, live: null, raw: { readings: [], events: [] }, meals: [],
       pred: null, predKey: null, predError: null,
@@ -309,6 +316,52 @@
   }
 
   // ---------------------------------------------------------------- meal builder
+  function useDictatedMeal() {
+    if (S.predBusy || S.confirmBusy) return;
+    const result = dictation.state.result;
+    if (!result?.items?.length) return;
+    S.builder.items = result.items.map(item => {
+      const n = item.nutrition, match = item.match;
+      const grams = n?.serving?.grams ?? null;
+      const portionIndex = n?.serving?.portion_index;
+      return { name: item.name, amount: '', grams, customGrams: grams ?? '',
+        portionKey: portionIndex != null ? String(portionIndex) : 'custom',
+        portionCount: n?.serving?.portion_count ?? 1,
+        portionAssumed: n?.serving?.assumed ?? false,
+        dictatedAmount: item.quantity != null ? `${item.quantity} ${item.unit || item.name}` : null,
+        fdcId: match?.fdcId ?? null, per100: grams == null,
+        usda: n ? { ...n, fdcId: match.fdcId, description: match.description, source: match.dataType } : null,
+        voiceWarnings: item.warnings || [] };
+    });
+    S.builder.search = null;
+    S.pred = null; S.predKey = null; S.predError = null; S.alts = null; S.altsError = null;
+    dictation.cancel();
+    render();
+  }
+
+  function dictationCard() {
+    const v = dictation.state, result = v.result;
+    const busy = ['requesting', 'recording', 'processing'].includes(v.phase);
+    const label = v.phase === 'recording' ? 'Stop and transcribe' : v.phase === 'requesting'
+      ? 'Allow microphone access…' : v.phase === 'processing' ? 'Understanding your meal…' : 'Dictate my meal';
+    return `<button type="button" class="btn secondary" data-action="dictate-${v.phase === 'recording' ? 'stop' : 'start'}" ${busy && v.phase !== 'recording' ? 'disabled' : ''}>${label}</button>
+      ${busy || result ? '<button type="button" class="link-btn" data-action="dictate-cancel">Cancel</button>' : ''}
+      <p class="hint" role="status">${v.phase === 'recording' ? `Recording ${v.seconds}s / 120s. Describe your foods and amounts.`
+        : v.phase === 'processing' ? 'Transcribing speech, identifying foods, and looking up USDA nutrition…'
+          : 'Describe your meal and portions, then review the result. Audio is sent to ElevenLabs; the transcript goes to Gemini for USDA matching.'}</p>
+      ${v.error ? `<div class="alert" role="alert">${esc(v.error)}</div>` : ''}
+      ${result ? `<div class="card" style="margin-top:12px;padding:16px">
+        <strong>Review your dictated meal</strong><p>${esc(result.transcript)}</p>
+        <ul>${result.items.map(item => `<li>${esc(item.name)}${item.quantity != null ? ` · ${esc(item.quantity)} ${esc(item.unit || '')}` : ''}
+          <div class="hint">${item.match ? `USDA: ${esc(item.match.description)}` : 'No USDA match. You can search or edit this food.'}
+          ${item.nutrition?.serving ? ` · Total: ${item.nutrition.serving.grams} g (${esc(item.nutrition.serving.basis || 'stated amount')})${item.nutrition.serving.assumed ? '. Please double-check this assumed amount.' : ''}` : ' · Could not convert this amount to grams.'}</div>
+          ${(item.warnings || []).map(w => `<div class="hint">${esc(w)}</div>`).join('')}</li>`).join('')}</ul>
+        ${(result.warnings || []).map(w => `<p class="hint">${esc(w)}</p>`).join('')}
+        <button type="button" class="btn" data-action="dictate-use" ${S.predBusy || S.confirmBusy ? 'disabled' : ''}>Use dictated meal</button>
+        <p class="hint">Replaces the current food list using the amounts above.</p>
+      </div>` : ''}`;
+  }
+
   const foodInfo = name => (S.catalog ? S.catalog.foods.find(f => f.name === name) : null);
   const unitOf = name => (foodInfo(name) || { unit: 'g' }).unit;
   // Grams actually fed to the model/macros: USDA-resolved grams when a food was looked up,
@@ -351,6 +404,20 @@
   }
 
   // ---- Look up USDA nutrients/portions for a row (by classifier label when known, else typed text).
+  function typedWeight(text) {
+    const match = text.match(/(?<![\w./-])(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?|\.\d+)\s*(kilograms?|kg|grams?|gm|g|ounces?|oz|pounds?|lbs?)\b/i);
+    if (!match) return null;
+    const quantity = match[1].split(/\s+/).reduce((sum, part) => {
+      const [n, d] = part.split('/').map(Number);
+      return sum + n / (d ?? 1);
+    }, 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return null;
+    const unit = match[2].toLowerCase();
+    const factor = /^(kg|kilogram)/.test(unit) ? 1000 : /^(oz|ounce)/.test(unit) ? 28.3495 : /^(lb|pound)/.test(unit) ? 453.592 : 1;
+    const name = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim().replace(/^of\s+/i, '').trim();
+    return name ? { name, grams: Math.round(quantity * factor * 10) / 10 } : null;
+  }
+
   async function lookupFood(i) {
     const item = S.builder.items[i];
     if (!item) return;
@@ -360,20 +427,27 @@
     try {
       const rec = item.fdcId ? await api.foodNutrientsById(item.fdcId) : await api.foodNutrients(query);
       item.usda = rec; item.per100 = false;
-      if (rec.default_portion) { item.portionKey = '0'; item.grams = rec.default_portion.grams; }
-      else { item.portionKey = 'per100'; item.grams = 100; }
+      if (item.portionKey === 'custom' && item.grams > 0) { item.customGrams = item.grams; }
+      else {
+        item.portionAssumed = true; item.portionCount = 1;
+        const portion = rec.default_portion || rec.portions?.[0];
+        const index = portion ? rec.portions.findIndex(p => p.label === portion.label && p.grams === portion.grams) : -1;
+        item.portionKey = index >= 0 ? String(index) : portion ? 'custom' : 'per100';
+        item.grams = portion?.grams ?? 100; item.customGrams = item.grams;
+      }
     } catch (e) {
-      item.usda = null; item.grams = null; item.lookupError = e;
+      item.usda = null; item.lookupError = e;
     }
     item.lookupBusy = false; render();
   }
 
   function setPortion(i, key) {
     const item = S.builder.items[i];
+    item.portionAssumed = false;
     item.portionKey = key;
     if (key === 'per100') item.grams = 100;
     else if (key === 'custom') item.grams = +item.customGrams || item.grams || 100;
-    else if (item.usda && item.usda.portions[+key]) item.grams = item.usda.portions[+key].grams;
+    else if (item.usda && item.usda.portions[+key]) item.grams = Math.round(item.usda.portions[+key].grams * (item.portionCount ?? 1) * 10) / 10;
     render();
   }
 
@@ -439,6 +513,10 @@
 
   async function predict() {
     const req = mealRequest();
+    if (S.builder.items.some(item => item.name && !(itemGrams(item) > 0))) {
+      S.predError = { message: 'Choose a portion or enter grams for every food before predicting.' };
+      return render();
+    }
     if (!req.dietary_intake) { S.predError = { message: 'Add at least one food with a portion.' }; return render(); }
     S.predBusy = true; S.predError = null; S.pred = null; S.alts = null; S.altsError = null; S.altsOpen = false; S.predInfo = false; render();
     try {
@@ -560,7 +638,11 @@
       <input id="gl-pw" name="password" type="${S.pwShown ? 'text' : 'password'}" autocomplete="current-password" placeholder="Your password" required>
       <button type="button" data-action="toggle-pw" aria-label="${S.pwShown ? 'Hide password' : 'Show password'}">${icon(IC.eye)}</button>
     </div>
-    <p style="font-size:14px;color:var(--muted-2);line-height:1.5;margin:16px 0 0">Admin access only. Accounts are managed by your Glyimpse administrator.</p>
+    ${(S.health?.example_users || []).length ? `
+    <p class="hint">Try a patient example with preloaded glucose history and meals. Select an account, then enter its example password.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+      ${S.health.example_users.map(username => `<button type="button" class="btn" data-action="example-user" data-username="${esc(username)}">${esc(username)}</button>`).join('')}
+    </div>` : '<p class="hint">Accounts are managed by your Glyimpse administrator.</p>'}
     ${S.signinError ? `<div class="alert" role="alert" style="margin-top:16px">${esc(S.signinError)}</div>` : S.healthError ? errorBox(S.healthError) : ''}
     <button class="btn lg" type="submit" ${S.signinBusy ? 'disabled' : ''}>${S.signinBusy ? 'Signing in…' : 'Sign in ' + icon(IC.chevron, 18, 2.2)}</button>
   </form>
@@ -910,21 +992,25 @@
 
   function nutritionCard(item) {
     const u = item.usda, dp = u.default_portion;
-    const grams = item.per100 ? 100 : itemGrams(item);
+    const noPortion = !(itemGrams(item) > 0), per100 = item.per100 || noPortion;
+    const grams = per100 ? 100 : itemGrams(item);
     const m = scaleMacros(u.per_100g, grams);
-    const standard = dp
-      ? `USDA standard portion: <b>${esc(dp.label)} (${dp.grams} g)</b>`
-      : `USDA lists no standard portion for this food — showing <b>per 100 g</b>`;
+    const selected = /^\d+$/.test(item.portionKey || '') ? u.portions[+item.portionKey] : null;
+    const standard = selected
+      ? `Selected amount: <b>${esc(item.portionCount ?? 1)} × ${esc(selected.label)} (${itemGrams(item)} g total)</b>`
+      : !noPortion ? `Selected amount: <b>${itemGrams(item)} g</b>`
+      : dp ? `USDA reference portion: <b>${esc(dp.label)} (${dp.grams} g)</b>`
+      : `USDA lists no standard portion for this food.`;
     const macros = `${showNum(m.kcal)} kcal · Carbs ${showNum(m.carbs_g)} g · Protein ${showNum(m.protein_g)} g · Fat ${showNum(m.fat_g)} g`;
     const notes = [];
     if (u.kcal_estimated) notes.push('Calories estimated from macros.');
     if (u.missing && u.missing.length) notes.push('USDA is missing: ' + u.missing.join(', ') + '.');
     return `<div class="card" style="margin-top:8px;padding:14px 16px">
     <div class="small" style="color:var(--teal);font-weight:700">${standard}</div>
-    <div style="margin-top:4px;font-size:13px;color:var(--muted-2)">Compare this to what's on your plate.</div>
-    <div style="margin-top:10px;font-size:15px">${item.per100 ? '<span class="muted small">per 100 g · </span>' : `<span class="muted small">for ${grams} g · </span>`}${macros}</div>
+    ${item.portionAssumed ? `<div class="hint">${dp || selected ? 'A standard serving was assumed.' : 'No standard serving is available; 100 g was assumed.'} Please double-check the ${itemGrams(item)} g amount.</div>` : ''}
+    <div style="margin-top:10px;font-size:15px">${per100 ? '<span class="muted small">per 100 g · </span>' : `<span class="muted small">for ${grams} g · </span>`}${macros}</div>
     <div class="row" style="margin-top:10px;gap:12px;align-items:center">
-      <button type="button" class="link-btn ghost" data-action="toggle-per100" data-index="${item._i}">${item.per100 ? 'Show selected portion' : 'Show per 100 g'}</button>
+      <button type="button" class="link-btn ghost" data-action="toggle-per100" data-index="${item._i}" ${noPortion ? 'disabled' : ''}>${noPortion ? 'Choose a portion first' : per100 ? 'Show selected portion' : 'Show per 100 g'}</button>
       <span class="small muted">Source: USDA ${esc(u.source || '')}</span></div>
     ${notes.length ? `<div class="hint">${esc(notes.join(' '))}</div>` : ''}
   </div>`;
@@ -945,6 +1031,14 @@
 
   function foodDetail(item, i) {
     let html = '';
+    if (item.dictatedAmount) html += `<div class="hint">Dictated amount: ${esc(item.dictatedAmount)}. ${itemGrams(item) > 0 ? `Selected total: ${itemGrams(item)} g.` : ''}</div>`;
+    if (item.usda && /^\d+$/.test(item.portionKey || '')) {
+      html += `<div class="food-row" style="margin-top:8px"><label for="portion-count-${i}">Number of portions</label>
+        <input id="portion-count-${i}" class="input" type="number" min="0.01" step="any" inputmode="decimal" data-item="${i}" data-part="portion-count" value="${esc(item.portionCount ?? 1)}" aria-label="Number of portions ${i + 1}"></div>`;
+    }
+    if (item.voiceWarnings?.length) html += `<div class="hint">${esc(item.voiceWarnings.join(' '))}</div>`;
+    if (item.voiceWarnings && !(itemGrams(item) > 0)) html += '<div class="hint">Choose a portion or enter grams for this food.</div>';
+    if (item.voiceWarnings) html += `<button type="button" class="link-btn" data-action="search-toggle" data-index="${i}">Search USDA for this food</button>`;
     if (item.identifyBusy) html += `<div class="hint" role="status">Identifying photo…</div>`;
     if (item.identifyError) html += `<div class="hint" style="color:var(--coral)">${esc(photoErrorText(item.identifyError))}</div>`;
     if (item.predictions && item.predictions.length) {
@@ -1003,6 +1097,7 @@
   </div>
   <div class="log-form">
   <div class="field"><label>Foods and portions</label>
+    <div id="meal-dictation" style="margin:12px 0 16px">${dictationCard()}</div>
     <datalist id="glympse-foods">${S.catalog.foods.map(f => `<option value="${esc(f.name)}"></option>`).join('')}</datalist>
     ${S.builder.items.map(foodRow).join('')}
     <button class="link-btn" style="margin-top:10px" data-action="add-food">${icon(IC.plus, 15)} Add food</button>
@@ -1265,7 +1360,16 @@
       S.pwShown = !S.pwShown; render();
       const next = root.querySelector('#gl-pw'); next.value = value; next.focus();
     }
+    else if (a === 'example-user') {
+      S.user = el.dataset.username;
+      root.querySelector('#gl-user').value = S.user;
+      root.querySelector('#gl-pw').focus();
+    }
     else if (a === 'signout') signOut();
+    else if (a === 'dictate-start') dictation.start();
+    else if (a === 'dictate-stop') dictation.stop();
+    else if (a === 'dictate-cancel') dictation.cancel();
+    else if (a === 'dictate-use') useDictatedMeal();
     else if (a === 'add-food') { S.builder.items.push({ name: '', amount: 100 }); render(); }
     else if (a === 'remove-food') { S.builder.items.splice(+el.dataset.index, 1); if (S.builder.search) S.builder.search = null; render(); }
     else if (a === 'identify-photo') { pickPhoto(+el.dataset.index); }
@@ -1310,14 +1414,24 @@
       const item = S.builder.items[+d.item];
       if (d.part === 'name') {
         // A typed/chosen food: reset any photo/USDA state and look it up fresh in USDA.
-        item.name = t.value; item.label = null; item.selectedLabel = null; item.fdcId = null;
+        const stated = typedWeight(t.value);
+        item.name = stated?.name ?? t.value; item.label = null; item.selectedLabel = null; item.fdcId = null;
         item.predictions = null; item.needsConfirmation = false; item.portionKey = null;
+        item.grams = stated?.grams ?? null; item.customGrams = stated?.grams ?? '';
+        item.amount = ''; item.portionCount = 1; item.portionAssumed = false;
+        item.dictatedAmount = null; item.voiceWarnings = null;
+        if (stated) item.portionKey = 'custom';
         lookupFood(+d.item);  // async; re-renders with USDA portions + macros
       } else if (d.part === 'portion') {
         setPortion(+d.item, t.value);
+      } else if (d.part === 'portion-count') {
+        item.portionCount = Math.max(0, +t.value || 0);
+        setPortion(+d.item, item.portionKey);
       } else if (d.part === 'custom-grams') {
+        item.portionAssumed = false;
         item.customGrams = t.value; item.grams = +t.value || null; render();
       } else if (d.part === 'amount') {
+        item.portionAssumed = false;
         if (t.value === 'custom') { item.portionKey = 'custom'; item.grams = itemGrams(item); item.customGrams = item.grams; }
         else { item.amount = +t.value; item.grams = null; item.portionKey = null; }
         render();

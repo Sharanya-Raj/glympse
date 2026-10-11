@@ -187,6 +187,9 @@ class ApiTests(unittest.TestCase):
             seeded = dict(seed_recordings=["9001_0_20250101", "9002_0_20250101:own-pass"],
                           seed_password="dev123", data_dir=str(data))
             client = self.make_client(directory, dev=True, **seeded)
+            self.assertEqual(client.get("/health").json()["example_users"], ["patient9001", "patient9002"])
+            self.assertNotIn("dev123", client.get("/health").text)
+            self.assertNotIn("own-pass", client.get("/health").text)
             own = client.post("/sessions", json={"username": "patient9002", "password": "own-pass"})
             self.assertEqual(own.status_code, 200, own.text)
             self.assertEqual(client.post("/sessions", json={"username": "patient9002", "password": "dev123"}).status_code, 401)
@@ -206,6 +209,8 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(renamed.post("/sessions", json={"username": "patient9001", "password": "dev123"}).status_code, 401)
             with self.assertRaises(RuntimeError):
                 self.make_client(directory, dev=False, **seeded)
+            production = self.make_client(directory, dev=False)
+            self.assertEqual(production.get("/health").json()["example_users"], [])
 
     def test_spike_assessment_and_what_if_alternatives(self):
         with tempfile.TemporaryDirectory() as directory:

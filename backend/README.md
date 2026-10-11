@@ -8,6 +8,29 @@ rankings, tests and benchmarks. `app.py` is the authenticated API;
 Install ML dependencies with `python -m pip install -r backend/requirements.txt`.
 API runtime and test dependencies are included in this list.
 
+## Local patient examples
+
+The frontend and API use the two workbooks in `data/frontend_test/` as example
+accounts. Add these settings to your gitignored `backend/.env`:
+
+```ini
+GLYIMPSE_ENV=dev
+GLYIMPSE_SEED_RECORDINGS=2000_0_20201230,2001_0_20201102
+GLYIMPSE_SEED_PASSWORD=patient-demo-123
+```
+
+Run `python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000` from the
+repository root and open <http://127.0.0.1:8000>. The sign-in screen offers
+`patient2000` and `patient2001`; both use `patient-demo-123` with the configuration
+above. Each account has its own recorded meals, treatments, and glucose history.
+The existing converter interpolates CGM to five minutes only across gaps of at
+most 30 minutes; meal and treatment timestamps stay intact. Replay starts on day 8.
+Existing account histories and forecasts survive server restarts.
+
+`GLYIMPSE_DATA_DIR` overrides the default `data/frontend_test/` source directory.
+Example accounts require development mode; disable the seed settings in production.
+The shared prediction model still comes from `backend/artifacts/population.joblib`.
+
 # Glucose forecasting modules
 
 `data.py`, `eda.py`, `features.py`, `model.py`, and `explain.py` provide the daily

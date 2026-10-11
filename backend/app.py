@@ -124,6 +124,7 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
         configured = (Login if dev else Credentials)(username=admin[0], password=admin[1])
         accounts.ensure_user(configured.username, configured.password)
 
+    example_users = []
     if seed_recordings is None:
         seed_recordings = [r.strip() for r in os.environ.get("GLYIMPSE_SEED_RECORDINGS", "").split(",") if r.strip()]
     if seed_recordings:
@@ -136,7 +137,8 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
             recording, _, name = recording.partition("=")
             username = Login(username=name.strip(), password="x").username if name.strip() else ""
             pairs.append((recording.strip(), Login(username="seed", password=own.strip() or default).password, username))
-        seed_patients(accounts, Path(data_dir or os.environ.get("GLYIMPSE_DATA_DIR", ROOT / "data")), pairs)
+        example_users = seed_patients(accounts, Path(data_dir or os.environ.get(
+            "GLYIMPSE_DATA_DIR", ROOT.parent / "data/frontend_test")), pairs)
 
     def user(credentials: HTTPAuthorizationCredentials = Depends(bearer)):
         user_id = accounts.authenticate(credentials.credentials) if credentials else None
@@ -168,7 +170,8 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "shared_model_available": artifact.is_file(), "signup_open": signup_open}
+        return {"status": "ok", "shared_model_available": artifact.is_file(), "signup_open": signup_open,
+                "example_users": example_users}
 
     @app.post("/accounts", status_code=201)
     def signup(payload: Credentials):
@@ -454,4 +457,5 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
 
 
 load_env_file(ROOT / ".env")
+load_env_file(ROOT.parent / ".env")
 app = create_app()
