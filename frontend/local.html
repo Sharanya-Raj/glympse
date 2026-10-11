@@ -51,10 +51,10 @@
     <h2>Account</h2>
     <div id="auth-form">
       <div class="row">
-        <div><label for="username">Username</label><input id="username" autocomplete="username"></div>
-        <div><label for="password">Password (at least 12 characters)</label><input id="password" type="password" autocomplete="current-password"></div>
+        <div><label for="email">Email</label><input id="email" type="email" autocomplete="username" maxlength="254"></div>
+        <div><label for="password">Password</label><input id="password" type="password" autocomplete="current-password"></div>
       </div>
-      <button id="signin">Sign in</button><button id="signup" class="secondary">Create account</button>
+      <button id="signin">Sign in</button><a href="index.html">Forgot password?</a>
     </div>
     <div id="auth-done" class="hidden">
       <span class="pill ok">Signed in</span>
@@ -243,13 +243,8 @@ async function loadExplanations() {
 }
 
 $('signin').onclick = (e) => run(e.target, 'auth-msg', async () => {
-  await api.signIn($('username').value.trim(), $('password').value);
+  await api.signIn($('email').value.trim(), $('password').value);
   await afterSignIn('Signed in.');
-});
-
-$('signup').onclick = (e) => run(e.target, 'auth-msg', async () => {
-  await api.signUp($('username').value.trim(), $('password').value);
-  await afterSignIn('Account created.');
 });
 
 $('signout').onclick = () => {

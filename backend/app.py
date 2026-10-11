@@ -12,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from botocore.exceptions import BotoCoreError, ClientError
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from .accounts import Accounts
 from .auth import CognitoAuth
@@ -47,20 +47,33 @@ def env_flag(name):
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-class Credentials(BaseModel):
-    username: str = Field(min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9_.@-]+$")
+class EmailRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(min_length=3, max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def trim_email(cls, value):
+        # Preserve case: existing Cognito pools can be case-sensitive.
+        return value.strip() if isinstance(value, str) else value
+
+
+class Credentials(EmailRequest):
     password: str = Field(min_length=12, max_length=128)
 
 
-class Login(BaseModel):
+class Login(EmailRequest):
     # Cognito verifies credentials; this service stores neither passwords nor tokens.
-    username: str = Field(min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9_.@-]+$")
     password: str = Field(min_length=1, max_length=128)
 
 
-class Confirmation(BaseModel):
-    username: str = Field(min_length=1, max_length=128)
+class Confirmation(EmailRequest):
     code: str = Field(min_length=1, max_length=32)
+
+
+class PasswordReset(Confirmation):
+    # Cognito enforces the pool's current password policy.
+    password: str = Field(min_length=1, max_length=128)
 
 
 class Reading(BaseModel):
@@ -182,18 +195,28 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     def signup(payload: Credentials):
         if not signup_open:
             raise HTTPException(403, "Sign-up is disabled; ask the administrator for access")
-        return authentication.signup(payload.username, payload.password)
+        return authentication.signup(payload.email, payload.password)
 
     @app.post("/accounts/confirm")
     def confirm_account(payload: Confirmation):
-        authentication.confirm(payload.username, payload.code)
+        authentication.confirm(payload.email, payload.code)
         return {"confirmed": True}
+
+    @app.post("/password/forgot")
+    def forgot_password(payload: EmailRequest):
+        authentication.forgot_password(payload.email)
+        return {"message": "If this account can recover its password, a reset code has been sent to its verified contact address."}
+
+    @app.post("/password/reset")
+    def reset_password(payload: PasswordReset):
+        authentication.reset_password(payload.email, payload.code, payload.password)
+        return {"message": "Password updated. Sign in with your new password."}
 
     @app.post("/sessions")
     def signin(payload: Login):
-        result = authentication.login(payload.username, payload.password)
+        result = authentication.login(payload.email, payload.password)
         claims = authentication.authenticate(result["access_token"])
-        accounts.ensure_patient(claims["sub"], claims.get("username", payload.username))
+        accounts.ensure_patient(claims["sub"], payload.email)
         return result
 
     @app.delete("/sessions", status_code=204)
@@ -203,9 +226,9 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     @app.get("/me")
     def me(claims=Depends(identity)):
         # Supports tokens obtained directly from Cognito as well as /sessions.
-        username = claims.get("username", claims["sub"])
-        accounts.ensure_patient(claims["sub"], username)
-        return {"username": username, "admin": False}
+        email = claims.get("email", claims.get("username", ""))
+        accounts.ensure_patient(claims["sub"], email)
+        return {"email": email, "admin": False}
 
     @app.get("/history")
     def status(user_id=Depends(user)):

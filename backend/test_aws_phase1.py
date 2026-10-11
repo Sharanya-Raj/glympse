@@ -66,8 +66,9 @@ class SyntheticAuth:
     def login(self, username, password):
         if password != "synthetic-password":
             raise HTTPException(401, "Invalid credentials")
-        self.authenticate(username)
-        return {"access_token": username, "token_type": "bearer", "expires_in": 3600}
+        token = username.split("@", 1)[0]
+        self.authenticate(token)
+        return {"access_token": token, "token_type": "bearer", "expires_in": 3600}
 
 
 class DynamoTests(unittest.TestCase):
@@ -108,7 +109,7 @@ class DynamoTests(unittest.TestCase):
         client = ApiClient(create_app(storage=self.store, auth=SyntheticAuth(), frontend_dir="", allowed_origins=["https://example.test"]))
         for path in ("/me", "/history", "/history/readings", "/live", "/meals", "/explanations/daily"):
             self.assertEqual(client.get(path).status_code, 401, path)
-        login = client.post("/sessions", json={"username": "synthetic-a", "password": "synthetic-password"})
+        login = client.post("/sessions", json={"email": "synthetic-a@example.com", "password": "synthetic-password"})
         self.assertEqual(login.status_code, 200)
         headers = {"Authorization": "Bearer synthetic-a"}
         other = {"Authorization": "Bearer synthetic-b"}

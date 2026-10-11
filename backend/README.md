@@ -1,5 +1,9 @@
 # Backend
 
+Current email/password sign-in, password recovery, and patient 2088 import:
+[EMAIL_AUTH.md](EMAIL_AUTH.md). The legacy local example accounts described below
+are retired; provision users in Cognito.
+
 The maintained ML pipeline lives in `ml/`.
 Read `ml/README.md` for account creation, uploads, prediction, daily feature
 rankings, tests and benchmarks. `app.py` is the authenticated API;

@@ -25,8 +25,29 @@ class ImportTests(unittest.TestCase):
         client = Mock()
         client.admin_get_user.return_value = {'Enabled': True, 'UserAttributes': [{'Name':'sub','Value':'synthetic-a'}]}
         self.assertEqual(resolve_identity(client, 'patient1', 'synthetic-a'), 'synthetic-a')
+        self.assertEqual(resolve_identity(client, 'person@example.com'), 'synthetic-a')
         with self.assertRaises(ValueError):
             resolve_identity(client, 'patient1', 'synthetic-b')
+        client.admin_get_user.return_value['Enabled'] = False
+        with self.assertRaises(ValueError):
+            resolve_identity(client, 'person@example.com')
+
+    def test_exclusions_preserve_macros_and_protect_required_columns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'source.csv'
+            path.write_text('Patient,Recording,Date,CGM (mg / dl),CBG (mg / dl),Blood Ketone (mmol / L),\u996e\u98df,meal_carbs_g\n2088,r,2025-01-01 00:00,110.00,120,0.1,text,12.50\n', encoding='utf-8')
+            selected, report = select_history(path, '2088', exclude_columns=['CBG (mg / dl)', 'Blood Ketone (mmol / L)'], exclude_chinese_columns=True)
+            self.assertEqual(selected, 'Patient,Recording,Date,CGM (mg / dl),meal_carbs_g\n2088,r,2025-01-01 00:00,110.00,12.50\n')
+            self.assertEqual(len(report['excluded_columns']), 3)
+            with self.assertRaisesRegex(ValueError, 'Cannot exclude'):
+                select_history(path, '2088', exclude_columns=['CGM (mg / dl)'])
+
+    def test_refuse_multiple_recordings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'source.csv'
+            path.write_text('Patient,Recording,Date,CGM (mg / dl)\n2000,a,2025-01-01 00:00,110\n2000,b,2025-02-01 00:00,120\n')
+            with self.assertRaisesRegex(ValueError, 'exactly one recording'):
+                select_history(path, '2000')
 
     @mock_aws
     @patch.dict('os.environ', {'GLYMPSE_PATIENTS_TABLE':'glympse-patients','GLYMPSE_MEALS_TABLE':'glympse-meals'})

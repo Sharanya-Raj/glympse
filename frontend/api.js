@@ -65,7 +65,8 @@
       const detail = detailText(data && data.detail);
       switch (res.status) {
         case 401:
-          if (signIn) throw new ApiError('auth', 'Wrong username or password.', 401);
+          if (signIn) throw new ApiError('auth', 'Wrong email or password.', 401);
+          if (!auth) throw new ApiError('auth', detail || 'Unable to complete this request. Check your details and try again.', 401);
           this.setToken(null);
           if (this.onUnauthorized) this.onUnauthorized();
           throw new ApiError('auth', 'Your sign-in expired. Please sign in again.', 401);
@@ -87,14 +88,20 @@
 
     health() { return this.request('GET', '/health', { auth: false }); }
 
-    async signIn(username, password) {
-      const data = await this.request('POST', '/sessions', { json: { username, password }, auth: false, signIn: true });
+    async signIn(email, password) {
+      const data = await this.request('POST', '/sessions', { json: { email, password }, auth: false, signIn: true });
       this.setToken(data.access_token);
       return data;
     }
 
-    confirmAccount(username, code) {
-      return this.request('POST', '/accounts/confirm', { json: { username, code }, auth: false });
+    forgotPassword(email) {
+      return this.request('POST', '/password/forgot', { json: { email }, auth: false });
+    }
+
+    async resetPassword(email, code, password) {
+      const data = await this.request('POST', '/password/reset', { json: { email, code, password }, auth: false });
+      this.setToken(null);
+      return data;
     }
 
     async signOut() {

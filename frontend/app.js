@@ -98,6 +98,7 @@
     admin: false,
     dailyExplanations: null,
     signinBusy: false, signinError: null, pwShown: false,
+    authMode: 'signin', authNotice: null,
     sheetDay: null, toast: null, toastBad: false,
     reminders: store.get('glyimpse_reminders', [true, true, true])
   };
@@ -225,7 +226,7 @@
     try {
       const me = await api.me();
       S.admin = !!me.admin;
-      S.user = me.username; store.set('glyimpse_user', me.username);
+      S.user = me.email; store.set('glyimpse_user', me.email);
       S.status = await api.getHistory();
       applyLive(await api.live(), false);
       if (!S.catalog) S.catalog = await api.catalog();
@@ -295,19 +296,46 @@
   }
 
   async function signIn(form) {
-    const username = form.username.value.trim(), password = form.password.value;
-    const confirmation = form.confirmation.value.trim();
-    if (!/^[a-zA-Z0-9_.@-]{3,80}$/.test(username)) { S.signinError = 'Enter your username (letters, numbers, . _ @ -).'; return render(); }
+    if (S.signinBusy) return;
+    const email = form.email.value.trim(), password = form.password.value;
+    S.user = email;
+    if (!validEmail(email)) { S.signinError = 'Enter a valid email address.'; return render(); }
     if (!password) { S.signinError = 'Enter your password.'; return render(); }
     S.signinBusy = true; S.signinError = null; render();
     try {
-      if (confirmation) await api.confirmAccount(username, confirmation);
-      await api.signIn(username, password);
-      S.user = username; store.set('glyimpse_user', username);
+      await api.signIn(email, password);
+      S.user = email; store.set('glyimpse_user', email);
       S.signinBusy = false; S.tab = 'today';
       await loadAll();
     } catch (e) {
       S.signinBusy = false; S.signinError = e.message; render();
+    }
+  }
+
+  function validEmail(email) {
+    return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  async function recoverPassword(form, resend = false) {
+    if (S.signinBusy) return;
+    const email = form.email.value.trim();
+    S.user = email;
+    if (!validEmail(email)) { S.signinError = 'Enter a valid email address.'; return render(); }
+    const resetting = S.authMode === 'reset' && !resend;
+    const code = resetting ? form.code.value.trim() : '';
+    const password = resetting ? form.password.value : '';
+    if (resetting && (!code || !password)) { S.signinError = 'Enter the reset code and a new password.'; return render(); }
+    if (resetting && password !== form.repeatPassword.value) { S.signinError = 'The passwords do not match.'; return render(); }
+    S.signinBusy = true; S.signinError = null; S.authNotice = null; render();
+    try {
+      const result = resetting ? await api.resetPassword(email, code, password) : await api.forgotPassword(email);
+      S.authMode = resetting ? 'signin' : 'reset';
+      S.authNotice = result.message;
+      S.pwShown = false;
+    } catch (e) {
+      S.signinError = e.message;
+    } finally {
+      S.signinBusy = false; render();
     }
   }
 
@@ -317,7 +345,7 @@
     Object.assign(S, { status: null, data: null, live: null, raw: { readings: [], events: [] }, meals: [],
       pred: null, predKey: null, predError: null,
       alts: null, altsError: null, admin: false,
-      loadError: null, sheetDay: null, tab: 'signin' });
+      loadError: null, sheetDay: null, tab: 'signin', authMode: 'signin', authNotice: null, pwShown: false });
   }
 
   async function signOut() {
@@ -653,6 +681,7 @@
   }
 
   function viewSignin() {
+    const recovery = S.authMode !== 'signin', resetting = S.authMode === 'reset';
     return `<main class="signin">
   <div style="position:relative;width:300px;max-width:100%;aspect-ratio:1;margin:0 auto">
     <svg viewBox="0 0 300 300" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
@@ -664,27 +693,30 @@
     <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${brand(62)}</div>
   </div>
   <div class="eyebrow" style="text-align:center;margin-top:28px">YOUR HEALTH, IN THE PICTURE</div>
-  <h1 class="title" style="text-align:center;margin:8px 0 0">Hey, welcome back.</h1>
-  <p style="text-align:center;font-size:17px;color:var(--muted-2);margin:10px 0 0">A little glimpse into a healthier you.</p>
-  <form id="signin-form" novalidate>
-    <label for="gl-user" class="signin-label" style="margin-top:30px">Username</label>
+  <h1 class="title" style="text-align:center;margin:8px 0 0">${recovery ? 'Reset your password.' : 'Hey, welcome back.'}</h1>
+  <p style="text-align:center;font-size:17px;color:var(--muted-2);margin:10px 0 0">${recovery ? 'Get back to your Glyimpse account.' : 'A little glimpse into a healthier you.'}</p>
+  <form id="${recovery ? 'recovery-form' : 'signin-form'}" novalidate>
+    <fieldset style="border:0;padding:0;margin:0;min-width:0" ${S.signinBusy ? 'disabled' : ''}>
+    <label for="gl-user" class="signin-label" style="margin-top:30px">Email</label>
     <div class="field-box">${icon(IC.user)}
-      <input id="gl-user" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="Your username" value="${esc(S.user)}" required>
+      <input id="gl-user" name="email" type="email" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="254" placeholder="you@example.com" value="${esc(S.user)}" ${resetting ? 'readonly' : ''} required>
     </div>
-    <label for="gl-pw" class="signin-label">Password</label>
+    ${resetting ? `<label for="gl-reset-code" class="signin-label">Reset code from your email</label>
+    <div class="field-box"><input id="gl-reset-code" name="code" autocomplete="one-time-code" maxlength="32" placeholder="Reset code" required></div>` : ''}
+    ${!recovery || resetting ? `<label for="gl-pw" class="signin-label">${resetting ? 'New password' : 'Password'}</label>
     <div class="field-box">${icon(IC.lock)}
-      <input id="gl-pw" name="password" type="${S.pwShown ? 'text' : 'password'}" autocomplete="current-password" placeholder="Your password" required>
+      <input id="gl-pw" name="password" type="${S.pwShown ? 'text' : 'password'}" autocomplete="${resetting ? 'new-password' : 'current-password'}" maxlength="128" placeholder="${resetting ? 'Choose a new password' : 'Your password'}" required>
       <button type="button" data-action="toggle-pw" aria-label="${S.pwShown ? 'Hide password' : 'Show password'}">${icon(IC.eye)}</button>
-    </div>
-    <label for="gl-confirm" class="signin-label">Confirmation code (only for a new, unconfirmed account)</label>
-    <div class="field-box"><input id="gl-confirm" name="confirmation" autocomplete="one-time-code" placeholder="Leave blank after confirmation"></div>
-    ${(S.health?.example_users || []).length ? `
-    <p class="hint">Try a patient example with preloaded glucose history and meals. Select an account, then enter its example password.</p>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
-      ${S.health.example_users.map(username => `<button type="button" class="btn" data-action="example-user" data-username="${esc(username)}">${esc(username)}</button>`).join('')}
-    </div>` : '<p class="hint">Accounts are managed by your Glyimpse administrator.</p>'}
+    </div>` : ''}
+    ${resetting ? `<label for="gl-repeat-pw" class="signin-label">Repeat new password</label>
+    <div class="field-box"><input id="gl-repeat-pw" name="repeatPassword" type="password" autocomplete="new-password" maxlength="128" placeholder="Enter your new password again" required></div>` : ''}
+    ${!recovery ? '<p class="hint">Accounts are managed by your Glyimpse administrator.</p>' : ''}
+    ${S.authNotice ? `<p class="hint" role="status">${esc(S.authNotice)}</p>` : ''}
     ${S.signinError ? `<div class="alert" role="alert" style="margin-top:16px">${esc(S.signinError)}</div>` : S.healthError ? errorBox(S.healthError) : ''}
-    <button class="btn lg" type="submit" ${S.signinBusy ? 'disabled' : ''}>${S.signinBusy ? 'Signing in…' : 'Sign in ' + icon(IC.chevron, 18, 2.2)}</button>
+    <button class="btn lg" type="submit">${S.signinBusy ? 'Please wait…' : resetting ? 'Update password' : recovery ? 'Send reset code' : 'Sign in ' + icon(IC.chevron, 18, 2.2)}</button>
+    ${resetting ? '<button class="link-btn" type="button" data-action="resend-reset">Send a new code</button>' : ''}
+    <button class="link-btn" type="button" data-action="auth-mode" data-mode="${recovery ? 'signin' : 'forgot'}">${recovery ? 'Back to sign in' : 'Forgot password?'}</button>
+    </fieldset>
   </form>
 </main>`;
   }
@@ -1315,7 +1347,7 @@
   <p class="hint profile-hint">Average and time in range (70–180) over your first 7 days.</p>
 
   <h2 class="display">Personal details</h2>
-  ${st ? `<dl class="kv"><dt>Username</dt><dd>${esc(S.user)}</dd>
+  ${st ? `<dl class="kv"><dt>Email</dt><dd>${esc(S.user)}</dd>
     ${/^\d+$/.test(id) ? `<dt>Patient ID</dt><dd>${esc(id)}</dd>` : ''}
     <dt>Your first 7 days</dt><dd>${shortDate(ms(st.first_reading))} – ${shortDate(ms(st.day8_start))}</dd>
     <dt>Day 8 starts</dt><dd>${day(st.day8_start)}</dd>
@@ -1436,16 +1468,18 @@
     if (a === 'go') go(el.dataset.tab);
     else if (a === 'reload') loadAll();
     else if (a === 'toggle-pw') {
-      const pw = root.querySelector('#gl-pw'), value = pw ? pw.value : '', user = root.querySelector('#gl-user');
-      if (user) S.user = user.value;
-      S.pwShown = !S.pwShown; render();
-      const next = root.querySelector('#gl-pw'); next.value = value; next.focus();
+      const pw = root.querySelector('#gl-pw');
+      S.pwShown = !S.pwShown;
+      pw.type = S.pwShown ? 'text' : 'password';
+      el.setAttribute('aria-label', S.pwShown ? 'Hide password' : 'Show password');
+      pw.focus();
     }
-    else if (a === 'example-user') {
-      S.user = el.dataset.username;
-      root.querySelector('#gl-user').value = S.user;
-      root.querySelector('#gl-pw').focus();
+    else if (a === 'auth-mode') {
+      if (S.signinBusy) return;
+      S.user = root.querySelector('#gl-user').value.trim();
+      S.authMode = el.dataset.mode; S.signinError = null; S.authNotice = null; S.pwShown = false; render();
     }
+    else if (a === 'resend-reset') recoverPassword(root.querySelector('#recovery-form'), true);
     else if (a === 'signout') signOut();
     else if (a === 'dictate-start') dictation.start();
     else if (a === 'dictate-stop') dictation.stop();
@@ -1531,6 +1565,7 @@
   });
   root.addEventListener('submit', e => {
     if (e.target.id === 'signin-form') { e.preventDefault(); signIn(e.target); }
+    if (e.target.id === 'recovery-form') { e.preventDefault(); recoverPassword(e.target); }
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;

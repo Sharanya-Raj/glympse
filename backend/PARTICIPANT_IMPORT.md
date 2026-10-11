@@ -1,5 +1,10 @@
 # One-time participant history import
 
+**Current workflow:** see [EMAIL_AUTH.md](EMAIL_AUTH.md#patient-2088) for patient
+2088, the cleaned CSV, and the required explicit `--email` argument. The notes
+below describe the earlier patient1/2000 task and its former defaults; do not use
+those commands for the current account.
+
 Script: scripts/import_participant_history.py. No application/ML files are changed. Defaults to read-only AWS dry-run; --offline makes no AWS calls. --write is the only mode that writes.
 
 ## Source selection still needs confirmation

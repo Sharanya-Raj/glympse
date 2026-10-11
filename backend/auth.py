@@ -34,11 +34,19 @@ class CognitoAuth:
             if code in {"NotAuthorizedException", "UserNotFoundException"}:
                 raise HTTPException(401, "Invalid credentials or expired session") from exc
             if code == "UserNotConfirmedException":
-                raise HTTPException(409, "Account not confirmed. Confirm your Cognito account before signing in.") from exc
+                raise HTTPException(409, "Your account is not active yet. Contact your administrator.") from exc
+            if code == "PasswordResetRequiredException":
+                raise HTTPException(409, "Reset your password using Forgot password, then sign in again.") from exc
             if code == "UsernameExistsException":
-                raise HTTPException(409, "Username unavailable") from exc
-            if code in {"CodeMismatchException", "ExpiredCodeException", "InvalidPasswordException", "InvalidParameterException"}:
-                raise HTTPException(422, "Cognito rejected the input or confirmation code") from exc
+                raise HTTPException(409, "Email unavailable") from exc
+            if code == "CodeMismatchException":
+                raise HTTPException(422, "That code is incorrect. Check your email and try again.") from exc
+            if code == "ExpiredCodeException":
+                raise HTTPException(422, "That code has expired. Request a new reset code.") from exc
+            if code in {"InvalidPasswordException", "PasswordHistoryPolicyViolationException"}:
+                raise HTTPException(422, "Choose a new password that meets your account's password policy and has not been used recently.") from exc
+            if code == "InvalidParameterException":
+                raise HTTPException(422, "Check your input and try again.") from exc
             if code in {"TooManyRequestsException", "LimitExceededException"}:
                 raise HTTPException(429, "Too many attempts; try again later") from exc
             raise HTTPException(503, "Authentication service unavailable") from exc
@@ -61,22 +69,38 @@ class CognitoAuth:
         remote_sub = next((a["Value"] for a in remote.get("UserAttributes", []) if a["Name"] == "sub"), None)
         if remote_sub != claims["sub"]:
             raise HTTPException(401, "Invalid session identity")
+        claims["email"] = next((a["Value"] for a in remote.get("UserAttributes", []) if a["Name"] == "email"), remote.get("Username", claims.get("username", "")))
         return claims
 
-    def login(self, username, password):
+    def login(self, email, password):
         response = self.call("initiate_auth", ClientId=self.settings[2], AuthFlow="USER_PASSWORD_AUTH",
-            AuthParameters={"USERNAME": username, "PASSWORD": password})
+            AuthParameters={"USERNAME": email, "PASSWORD": password})
         result = response.get("AuthenticationResult")
         if not result:
             raise HTTPException(409, "Cognito requires " + response.get("ChallengeName", "an additional sign-in step") + ". Complete this with your administrator; challenge login is not yet supported.")
         return {"access_token": result["AccessToken"], "token_type": "bearer", "expires_in": result["ExpiresIn"]}
 
-    def signup(self, username, password):
-        response = self.call("sign_up", ClientId=self.settings[2], Username=username, Password=password)
+    def signup(self, email, password):
+        response = self.call("sign_up", ClientId=self.settings[2], Username=email, Password=password,
+            UserAttributes=[{"Name": "email", "Value": email}])
         return {"user_id": response["UserSub"], "confirmed": response["UserConfirmed"], "confirmation_required": not response["UserConfirmed"]}
 
     def confirm(self, username, code):
         self.call("confirm_sign_up", ClientId=self.settings[2], Username=username, ConfirmationCode=code)
+
+    def forgot_password(self, email):
+        try:
+            self.call("forgot_password", ClientId=self.settings[2], Username=email)
+        except HTTPException as exc:
+            cause = exc.__cause__
+            # Do not disclose account existence or recovery eligibility.
+            if isinstance(cause, ClientError) and cause.response["Error"]["Code"] in {"UserNotFoundException", "InvalidParameterException"}:
+                return
+            raise
+
+    def reset_password(self, email, code, password):
+        self.call("confirm_forgot_password", ClientId=self.settings[2], Username=email,
+            ConfirmationCode=code, Password=password)
 
     def logout(self, token):
         self.call("global_sign_out", AccessToken=token)

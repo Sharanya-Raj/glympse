@@ -88,8 +88,8 @@ class ApiTests(unittest.TestCase):
         return ApiClient(create_app(model_path=Path(__file__).parent / "artifacts/population.joblib", storage=self.storage, auth=self.auth, **options))
 
     def signed_up(self, client, username="alice"):
-        client.post("/accounts", json={"username": username, "password": "test-password-123"})
-        response = client.post("/sessions", json={"username": username, "password": "test-password-123"})
+        client.post("/accounts", json={"email": username + "@example.com", "password": "test-password-123"})
+        response = client.post("/sessions", json={"email": username + "@example.com", "password": "test-password-123"})
         return {"Authorization": "Bearer " + response.json()["access_token"]}
 
     @staticmethod
@@ -101,11 +101,11 @@ class ApiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             client = self.make_client(directory, allow_signup=True)
             self.assertEqual(client.get("/health").json()["signup_open"], True)
-            first = client.post("/accounts", json={"username": "alice", "password": "test-password-123"})
+            first = client.post("/accounts", json={"email": "alice@example.com", "password": "test-password-123"})
             self.assertEqual(first.status_code, 201)
-            headers = {"Authorization": "Bearer " + client.post("/sessions", json={"username": "alice", "password": "test-password-123"}).json()["access_token"]}
-            second = client.post("/accounts", json={"username": "bob", "password": "test-password-456"})
-            other_headers = {"Authorization": "Bearer " + client.post("/sessions", json={"username": "bob", "password": "test-password-456"}).json()["access_token"]}
+            headers = {"Authorization": "Bearer " + client.post("/sessions", json={"email": "alice@example.com", "password": "test-password-123"}).json()["access_token"]}
+            second = client.post("/accounts", json={"email": "bob@example.com", "password": "test-password-456"})
+            other_headers = {"Authorization": "Bearer " + client.post("/sessions", json={"email": "bob@example.com", "password": "test-password-456"}).json()["access_token"]}
             self.assertEqual(client.get("/history", headers=other_headers).status_code, 409)
             self.assertEqual(client.get("/history").status_code, 401)
             raw = fixture(days=9)

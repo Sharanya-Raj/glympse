@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import io
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -16,10 +17,9 @@ from backend.ml.service import validate_history
 
 REGION = 'us-west-2'
 POOL = 'us-west-2_xjNDVpyKd'
-EXPECTED_SUB = '28918360-e0c1-7015-351c-7810242f6514'
 
 
-def select_history(source, patient, recording=None):
+def select_history(source, patient, recording=None, exclude_columns=(), exclude_chinese_columns=False):
     # String loading retains original precision, text, empty cells and NA literals.
     data = pd.read_csv(source, dtype=str, keep_default_na=False, encoding='utf-8-sig')
     if 'Patient' not in data:
@@ -29,6 +29,16 @@ def select_history(source, patient, recording=None):
         selected = selected.loc[selected.Recording.eq(recording)].copy()
     if selected.empty:
         raise ValueError(f'No rows for Patient {patient}; available IDs: {list(data.Patient.unique())[:30]}')
+    if selected.Recording.nunique() != 1:
+        raise ValueError('Select exactly one recording with --recording')
+    excluded = set(exclude_columns)
+    if missing := excluded - set(selected.columns):
+        raise ValueError(f'Excluded columns not found: {sorted(missing)}')
+    if exclude_chinese_columns:
+        excluded.update(c for c in selected.columns if re.search(r'[\u3400-\u9fff\uf900-\ufaff]', c))
+    if excluded & {'Patient', 'Recording', 'Date', 'CGM (mg / dl)'}:
+        raise ValueError('Cannot exclude patient, recording, timestamp or CGM columns')
+    selected = selected.drop(columns=sorted(excluded))
     # Validate exactly as the upload endpoint, but archive ALL original columns and
     # lexical values. The backend applies its original normalization on reads.
     validate_history(selected.replace('', pd.NA))
@@ -36,6 +46,7 @@ def select_history(source, patient, recording=None):
     food = selected['Dietary intake'].str.strip() if 'Dietary intake' in selected else pd.Series('', index=selected.index)
     meal = ~food.str.casefold().isin(['', 'no food ingested', 'none', 'nan', 'na', 'n/a'])
     report = {
+        'excluded_columns': sorted(excluded),
         'source': str(Path(source).resolve()),
         'source_sha256': hashlib.sha256(Path(source).read_bytes()).hexdigest(),
         'patient_in_source': str(patient), 'recordings': list(selected.Recording.unique()),
@@ -52,10 +63,10 @@ def select_history(source, patient, recording=None):
     return csv, report
 
 
-def resolve_identity(client, username, expected_sub):
-    result = client.admin_get_user(UserPoolId=POOL, Username=username)
+def resolve_identity(client, username, expected_sub=None, pool=POOL):
+    result = client.admin_get_user(UserPoolId=pool, Username=username)
     sub = next((a['Value'] for a in result['UserAttributes'] if a['Name'] == 'sub'), None)
-    if not sub or sub != expected_sub:
+    if not sub or (expected_sub is not None and sub != expected_sub):
         raise ValueError('Cognito sub does not match the expected target; no writes performed')
     if not result.get('Enabled', False):
         raise ValueError('Target Cognito user is disabled')
@@ -95,22 +106,35 @@ def main():
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--patient', required=True, help='Exact original Patient ID; never inferred from username')
     parser.add_argument('--recording', help='Required when the source patient has multiple recordings')
-    parser.add_argument('--username', default='patient1')
-    parser.add_argument('--expected-sub', default=EXPECTED_SUB)
+    parser.add_argument('--exclude-column', action='append', default=[], help='Column to omit; repeat for multiple columns')
+    parser.add_argument('--exclude-chinese-columns', action='store_true', help='Omit columns with Chinese characters in their names')
+    parser.add_argument('--output', type=Path, help='Also export the selected CSV locally without replacing different existing data')
+    parser.add_argument('--email', '--username', dest='username', required=True, help='Exact Cognito email sign-in identifier')
+    parser.add_argument('--expected-sub', help='Optional additional identity check against a known Cognito sub')
+    parser.add_argument('--region', default=REGION)
+    parser.add_argument('--user-pool-id', default=POOL)
     parser.add_argument('--profile', help='Existing AWS CLI/SSO profile; never supply keys in source code')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--write', action='store_true')
     mode.add_argument('--dry-run', action='store_true', help='Default; Cognito/DynamoDB reads only')
     mode.add_argument('--offline', action='store_true', help='Dataset preview only; no AWS calls')
     args = parser.parse_args()
-    csv, report = select_history(args.source, args.patient, args.recording)
-    report.update(region=REGION, username=args.username, mode='write' if args.write else 'dry-run',
+    csv, report = select_history(args.source, args.patient, args.recording, args.exclude_column, args.exclude_chinese_columns)
+    if args.output:
+        if args.output.resolve() == args.source.resolve():
+            raise ValueError('Output cannot replace the source dataset')
+        if args.output.exists() and args.output.read_bytes() != csv.encode('utf-8'):
+            raise ValueError('Output already contains different data; choose another path')
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_bytes(csv.encode('utf-8'))
+        report['export'] = str(args.output.resolve())
+    report.update(region=args.region, user_pool_id=args.user_pool_id, email=args.username, mode='write' if args.write else 'dry-run',
                   patients_table='glympse-patients', meals_table='glympse-meals')
     if args.offline:
         report.update(mode='offline', identity_verified=False, written=False)
     else:
-        session = boto3.Session(profile_name=args.profile, region_name=REGION)
-        sub = resolve_identity(session.client('cognito-idp'), args.username, args.expected_sub)
+        session = boto3.Session(profile_name=args.profile, region_name=args.region)
+        sub = resolve_identity(session.client('cognito-idp'), args.username, args.expected_sub, args.user_pool_id)
         accounts = Accounts(session.resource('dynamodb'))
         # Refuse table overrides to avoid a preview/write targeting unexpected tables.
         if accounts.patients.name != 'glympse-patients' or accounts.meals.name != 'glympse-meals':
