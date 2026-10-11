@@ -4,8 +4,8 @@ Used by the dictation API and `scripts/build_food_map.py --record / --audio`.
 sounddevice and google-genai are imported lazily so the label-mapping flow runs without them.
 
 Speech is the source of truth: the photo only clarifies foods the speaker mentioned. Quantities
-the speaker did not state stay null, and serving nutrition is computed only from a stated weight
-or a compatible USDA household portion; per-100 g data is always kept.
+the speaker did not state stay null; their serving defaults to a USDA standard portion (or an
+explicit 100 g fallback) marked as assumed. Stated amounts take priority; per-100 g data is kept.
 """
 import io
 import json
@@ -263,6 +263,7 @@ Rules:
 - Keep a mixed dish (lasagna, burrito, fried rice) as one item unless the speaker explicitly lists its components as separate foods.
 - quantity/unit: preserve the actual spoken amount ("three eggs" -> 3 and "egg"; "two slices of pizza" -> 2 and "slice"; "a cup of rice" -> 1 and "cup"; "200 grams of chicken" -> 200 and "g"). A counted food is a unit, even without a separate measurement word. Never replace a stated count with 1. Use null when not stated. Never estimate weights or serving sizes.
 - Return one row per distinct food with its full quantity, not one row per physical piece. Preserve every distinct food in the transcript.
+- Do not ask for portion sizes or warn about omitted amounts. The application uses stated amounts directly and fills omitted amounts with a standard serving for the user to double-check.
 - search_terms: a short generic food name for USDA search, without brands or quantities, e.g. "egg scrambled", "rice white cooked".
 - Never invent ingredients, weights, USDA identifiers or nutrient values.
 - If the transcript mentions no food, return an empty items list and explain in warnings.
@@ -517,7 +518,7 @@ Items:
 
 
 def attach_nutrition(items, records, gemini=None):
-    """Embed per-100 g nutrition (and a serving when the amount is known) into matched items.
+    """Embed nutrition, preserving stated amounts and defaulting only omitted amounts.
 
     `records` maps str(fdcId) -> nutrition record from nutrition.build_nutrition.
     """
@@ -542,10 +543,20 @@ def attach_nutrition(items, records, gemini=None):
             portion_count = item["quantity"] / float(reference_amount)
             grams = round(portion_count * portion["grams"], 1)
             basis = f"USDA portion '{portion['label']}'"
+        assumed = item["quantity"] is None
+        if assumed:
+            portion = record.get("default_portion") or (portions[0] if portions else None)
+            if portion:
+                grams = portion["grams"]
+                portion_index = next((i for i, p in enumerate(portions) if p == portion), None)
+                portion_count = 1 if portion_index is not None else None
+                basis = f"assumed standard serving: {portion['label']}"
+            else:
+                grams, basis = 100, "assumed 100 g; no standard serving available"
         serving = None
         if grams is not None:
             serving = {"grams": grams, "basis": basis, "nutrients": scale_nutrients(record["per_100g"], grams),
-                       "portion_index": portion_index, "portion_count": portion_count}
+                       "portion_index": portion_index, "portion_count": portion_count, "assumed": assumed}
         item["nutrition"] = {"per_100g": record["per_100g"], "portions": record.get("portions") or [],
                              "default_portion": record.get("default_portion"),
                              "missing": record.get("missing", []),

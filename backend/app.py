@@ -133,6 +133,20 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
 
     # Local password seeding is deliberately disabled. Provision users in Cognito.
     example_users = []
+    if seed_recordings is None:
+        seed_recordings = [r.strip() for r in os.environ.get("GLYIMPSE_SEED_RECORDINGS", "").split(",") if r.strip()]
+    if seed_recordings:
+        if not dev:
+            raise RuntimeError("GLYIMPSE_SEED_RECORDINGS is for local development only (set GLYIMPSE_ENV=dev)")
+        default = seed_password or os.environ.get("GLYIMPSE_SEED_PASSWORD", "")
+        pairs = []
+        for entry in seed_recordings:
+            recording, _, own = entry.partition(":")
+            recording, _, name = recording.partition("=")
+            username = Login(username=name.strip(), password="x").username if name.strip() else ""
+            pairs.append((recording.strip(), Login(username="seed", password=own.strip() or default).password, username))
+        example_users = seed_patients(accounts, Path(data_dir or os.environ.get(
+            "GLYIMPSE_DATA_DIR", ROOT.parent / "data/frontend_test")), pairs)
 
     def identity(credentials: HTTPAuthorizationCredentials = Depends(bearer)):
         if not credentials:

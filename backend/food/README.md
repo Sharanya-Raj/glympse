@@ -40,6 +40,9 @@ describe foods and amounts, and click **Stop and transcribe**. Recording stops a
 after two minutes. Review the transcript and USDA matches, then click **Use dictated meal**
 to replace the food list. Medication choices stay unchanged. Edit foods or search USDA to
 correct a match; quantities that cannot be converted to grams require a portion before prediction.
+Stated amounts are used directly without a portion reminder. If an amount is omitted, the USDA
+standard serving is filled in and marked for a double-check. When USDA has no standard serving,
+the app explicitly assumes 100 g and asks the user to double-check that fallback.
 Counts such as "three eggs" are matched to a compatible USDA reference (for example "1 large")
 and multiplied by the spoken quantity. The food list shows an editable **Number of portions**
 and the total grams. One row represents the full amount of that food, not one physical item.
@@ -137,8 +140,9 @@ stay `null`.
 The result goes to `outputs/meals/<timestamp>-<id>.json` (or `--meal-out`): transcript,
 `image_used`, warnings and ordered `items` with `match_status` (`mapped` from `food_map.json`,
 `matched` live, `unmatched`, or `error`) and a nullable `{fdcId, description, dataType}` match.
-`--fetch` embeds per-100 g nutrition, plus a serving only when the speaker stated a weight or a
-unit that matches a USDA portion (e.g. "2 cups"). Meal mode never modifies `food_map.json`,
+`--fetch` embeds per-100 g nutrition and a serving from the stated weight or compatible USDA
+portion (e.g. "2 cups"). Omitted amounts use a standard serving (100 g if unavailable), marked
+with `serving.assumed: true`; explicit amounts have `assumed: false`. Meal mode never modifies `food_map.json`,
 `food_map_review.csv` or `nutrient_cache.json`.
 
 ## Tests

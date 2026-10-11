@@ -31,7 +31,8 @@
     lock: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4',
     shield: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1zM9 12l2 2 4-4',
     utensils: 'M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7',
-    camera: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'
+    camera: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+    watch: 'M9 2h6l1 4H8zM8 18h8l-1 4H9zM7 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM12 9.5V12l1.5 1.5'
   };
   const icon = (d, size = 20, sw = 2, color = 'currentColor') =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"></path></svg>`;
@@ -46,8 +47,17 @@
   const ms = ts => Date.parse(String(ts).slice(0, 19) + 'Z');
   const pad = n => String(n).padStart(2, '0');
   const clock = t => { const d = new Date(t), h = d.getUTCHours(); return ((h % 12) || 12) + ':' + pad(d.getUTCMinutes()) + ' ' + (h < 12 ? 'AM' : 'PM'); };
-  const shortDate = t => { const d = new Date(t); return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
-  const longDate = t => DAYS[new Date(t).getUTCDay()] + ', ' + shortDate(t);
+  // The recording is from 2020-21; dates are shown moved by whole days so the replay's current day is today.
+  let dateShift = 0;
+  const shown = t => new Date(t + dateShift);
+  const shortDate = t => { const d = shown(t); return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
+  const longDate = t => DAYS[shown(t).getUTCDay()] + ', ' + shortDate(t);
+  const monthSpan = (a, b) => {
+    const x = shown(a), y = shown(b), m = d => MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+    return m(x) === m(y) ? m(x) : x.getUTCFullYear() === y.getUTCFullYear()
+      ? MONTHS[x.getUTCMonth()] + ' – ' + m(y) : m(x) + ' – ' + m(y);
+  };
+  const displayName = u => u ? u.charAt(0).toUpperCase() + u.slice(1) : '';
   const hourLabel = t => { const h = new Date(t).getUTCHours(); return ((h % 12) || 12) + (h < 12 ? 'a' : 'p'); };
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (e) { return fallback; } },
@@ -119,7 +129,8 @@
       if (e.treatment) treatments.push({ t, text: e.treatment, day: dayOf(t) });
     }
     const last = readings.length ? readings[readings.length - 1] : null;
-    const now = ms(L.now);
+    const now = ms(L.now), today = new Date();
+    dateShift = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) - Math.floor(now / DAY) * DAY;
     return { readings, meals, treatments, first, dayOf, last, now, lastDay: dayOf(now), day8: ms(L.day8_start) };
   }
 
@@ -318,6 +329,7 @@
       return { name: item.name, amount: '', grams, customGrams: grams ?? '',
         portionKey: portionIndex != null ? String(portionIndex) : 'custom',
         portionCount: n?.serving?.portion_count ?? 1,
+        portionAssumed: n?.serving?.assumed ?? false,
         dictatedAmount: item.quantity != null ? `${item.quantity} ${item.unit || item.name}` : null,
         fdcId: match?.fdcId ?? null, per100: grams == null,
         usda: n ? { ...n, fdcId: match.fdcId, description: match.description, source: match.dataType } : null,
@@ -344,11 +356,11 @@
         <strong>Review your dictated meal</strong><p>${esc(result.transcript)}</p>
         <ul>${result.items.map(item => `<li>${esc(item.name)}${item.quantity != null ? ` · ${esc(item.quantity)} ${esc(item.unit || '')}` : ''}
           <div class="hint">${item.match ? `USDA: ${esc(item.match.description)}` : 'No USDA match. You can search or edit this food.'}
-          ${item.nutrition?.serving ? ` · Total: ${item.nutrition.serving.grams} g (${esc(item.nutrition.serving.basis || 'stated amount')})` : ' · Portion needs review.'}</div>
+          ${item.nutrition?.serving ? ` · Total: ${item.nutrition.serving.grams} g (${esc(item.nutrition.serving.basis || 'stated amount')})${item.nutrition.serving.assumed ? '. Please double-check this assumed amount.' : ''}` : ' · Could not convert this amount to grams.'}</div>
           ${(item.warnings || []).map(w => `<div class="hint">${esc(w)}</div>`).join('')}</li>`).join('')}</ul>
         ${(result.warnings || []).map(w => `<p class="hint">${esc(w)}</p>`).join('')}
         <button type="button" class="btn" data-action="dictate-use" ${S.predBusy || S.confirmBusy ? 'disabled' : ''}>Use dictated meal</button>
-        <p class="hint">Replaces the current food list. Review portions before predicting.</p>
+        <p class="hint">Replaces the current food list using the amounts above.</p>
       </div>` : ''}`;
   }
 
@@ -394,6 +406,20 @@
   }
 
   // ---- Look up USDA nutrients/portions for a row (by classifier label when known, else typed text).
+  function typedWeight(text) {
+    const match = text.match(/(?<![\w./-])(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?|\.\d+)\s*(kilograms?|kg|grams?|gm|g|ounces?|oz|pounds?|lbs?)\b/i);
+    if (!match) return null;
+    const quantity = match[1].split(/\s+/).reduce((sum, part) => {
+      const [n, d] = part.split('/').map(Number);
+      return sum + n / (d ?? 1);
+    }, 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return null;
+    const unit = match[2].toLowerCase();
+    const factor = /^(kg|kilogram)/.test(unit) ? 1000 : /^(oz|ounce)/.test(unit) ? 28.3495 : /^(lb|pound)/.test(unit) ? 453.592 : 1;
+    const name = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim().replace(/^of\s+/i, '').trim();
+    return name ? { name, grams: Math.round(quantity * factor * 10) / 10 } : null;
+  }
+
   async function lookupFood(i) {
     const item = S.builder.items[i];
     if (!item) return;
@@ -404,16 +430,22 @@
       const rec = item.fdcId ? await api.foodNutrientsById(item.fdcId) : await api.foodNutrients(query);
       item.usda = rec; item.per100 = false;
       if (item.portionKey === 'custom' && item.grams > 0) { item.customGrams = item.grams; }
-      else if (rec.default_portion) { item.portionKey = '0'; item.grams = Math.round(rec.default_portion.grams * (item.portionCount ?? 1) * 10) / 10; }
-      else { item.portionKey = 'per100'; item.grams = 100; }
+      else {
+        item.portionAssumed = true; item.portionCount = 1;
+        const portion = rec.default_portion || rec.portions?.[0];
+        const index = portion ? rec.portions.findIndex(p => p.label === portion.label && p.grams === portion.grams) : -1;
+        item.portionKey = index >= 0 ? String(index) : portion ? 'custom' : 'per100';
+        item.grams = portion?.grams ?? 100; item.customGrams = item.grams;
+      }
     } catch (e) {
-      item.usda = null; item.grams = null; item.lookupError = e;
+      item.usda = null; item.lookupError = e;
     }
     item.lookupBusy = false; render();
   }
 
   function setPortion(i, key) {
     const item = S.builder.items[i];
+    item.portionAssumed = false;
     item.portionKey = key;
     if (key === 'per100') item.grams = 100;
     else if (key === 'custom') item.grams = +item.customGrams || item.grams || 100;
@@ -488,7 +520,7 @@
       return render();
     }
     if (!req.dietary_intake) { S.predError = { message: 'Add at least one food with a portion.' }; return render(); }
-    S.predBusy = true; S.predError = null; S.pred = null; S.alts = null; S.altsError = null; S.altsOpen = false; render();
+    S.predBusy = true; S.predError = null; S.pred = null; S.alts = null; S.altsError = null; S.altsOpen = false; S.predInfo = false; render();
     try {
       S.pred = await api.predict(req);
       S.predKey = formKey();
@@ -715,7 +747,7 @@
 
   function viewToday() {
     const D = S.data, st = S.status;
-    const head = `<header class="top"><div><div class="greet">${greeting()}, ${esc(S.user || 'there')}</div>${brand()}</div>
+    const head = `<header class="top"><div><div class="greet">${greeting()}, ${esc(displayName(S.user) || 'there')}</div>${brand()}</div>
   <button class="icon-btn" data-action="go" data-tab="reminders" aria-label="Reminders">${icon(IC.bell)}<span class="badge"></span></button></header>`;
     if (S.loading && !D) return `<main>${head}<div class="info pulse" role="status">Loading your history…</div></main>`;
 
@@ -824,17 +856,38 @@
     const med = medicationText(r.medication);
     return `<div class="pred${cls}" role="status">
   <div class="eyebrow-sm">What if · ${r.personalized ? `personalized from ${r.personal_training_meals} of your meals` : 'population model (fewer than 5 usable meals in your last 7 days)'}</div>
-  <div class="verdict">${VERDICTS[F.level]}</div>
+  <div class="pred-head"><div class="verdict">${VERDICTS[F.level]}</div>
+    <button class="info-btn" data-action="pred-info" aria-haspopup="dialog" aria-label="Why this forecast?" title="Why this forecast?">i</button></div>
   <p class="meta">${esc(r.dietary_intake)}${med ? ' · ' + esc(med) : ''} · at ${clock(F.t)}</p>
   ${hypothesisChart(F)}
-  ${spikeWhy(r.spike, F)}${sugarNote(r)}
   <div class="facts"><span>Peak <strong>~${round(F.peak.v)} mg/dL</strong></span><span>Rise <strong>${F.rise >= 0 ? '+' : '−'}${Math.abs(round(F.rise))}</strong></span><span>Start <strong>${round(F.base)}</strong></span></div>
   ${horizonTiles(F)}
   <p class="peak">${esc(peakText(F))}</p>
   <p class="meta">Starting point: ${recent.length} CGM readings from your history${lastRecent ? `, latest ${round(lastRecent.glucose)} mg/dL at ${clock(ms(lastRecent.timestamp))}` : ''}. Day ${r.day} of your recording.</p>
   ${predictionEvidence(r)}
+
   <p data-stale class="meta" hidden style="color:var(--yellow)">You changed the meal; check the forecast again before confirming.</p>
 </div>${alternativesCard(F)}`;
+  }
+
+  // The "i" pop-up: spike lines, why it does or doesn't spike, sugar adjustment and model drivers.
+  function viewPredInfo() {
+    if (!S.predInfo || !S.pred) return '';
+    const r = S.pred, F = summarize(r);
+    const recent = r.recent_cgm || [], lastRecent = recent[recent.length - 1];
+    const top = (F.peak.top || []).map(f => `<li><span>${esc(featureName(f.feature))}</span><b class="${f.contribution_mg_dl > 0 ? 'up' : 'down'}">${f.contribution_mg_dl > 0 ? '+' : '−'}${Math.abs(f.contribution_mg_dl).toFixed(0)} mg/dL</b></li>`).join('');
+    return `<div class="scrim" data-action="close-pred-info"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Why this forecast">
+    <button class="grab" data-action="close-pred-info" aria-label="Close"><span></span></button>
+    <h2>Why this forecast</h2>
+    <div class="pred plain">
+    ${limitsNote(F.limits)}
+    ${spikeWhy(r.spike, F)}${sugarNote(r)}
+    <p class="meta" style="margin-top:10px">Starting point: ${recent.length} CGM readings from your history${lastRecent ? `, latest ${round(lastRecent.glucose)} mg/dL at ${clock(ms(lastRecent.timestamp))}` : ''}. Day ${r.day} of your recording.</p>
+    ${top ? `<div class="eyebrow-sm" style="margin-top:16px">What moved this forecast most at +${F.peak.min} min</div><ul class="drivers">${top}</ul>` : ''}
+    <p class="meta" style="margin-top:10px">These show how the model reached its number, not proven causes.</p>
+    </div>
+  </div>`;
   }
 
   // Predicted (hypothesis) curve after the meal, next to the real readings of the hour before it.
@@ -857,12 +910,11 @@
   <text x="3" y="${f1(y(line) + 11)}" style="fill:#ffc46b">Spike${L.personal ? ' (75th pct)' : ''}: +${round(L.rise)} → ${round(line)}</text>
   <line x1="${f1(x(F.t))}" x2="${f1(x(F.t))}" y1="0" y2="${H - 14}" stroke="#9aa3ab" stroke-opacity="0.4"></line>
   ${realLine}${fcLine}${dots}${ticks}</svg>
-  <div class="legend sm"><span><i style="background:#5ee3a0"></i>Real CGM</span><span><i style="background:${F.level === 'none' ? '#4fdfdc' : '#ff8b85'}"></i>Predicted if you eat this</span></div>
-  ${limitsNote(L)}`;
+  <div class="legend sm"><span><i style="background:#5ee3a0"></i>Real CGM</span><span><i style="background:${F.level === 'none' ? '#4fdfdc' : '#ff8b85'}"></i>Predicted if you eat this</span></div>`;
   }
 
   function limitsNote(L) {
-    const who = esc(S.user || 'you');
+    const who = esc(displayName(S.user) || 'you');
     return L.personal
       ? `<p class="meta" style="margin-top:8px">Spike lines for ${who}, from ${L.meals} of your meals in days 1–7: <b>spike</b> when the rise is above <b>+${round(L.rise)} mg/dL</b> (75th percentile of your meal rises), <b>big spike</b> above <b>+${round(L.severe_rise)} mg/dL</b> (90th percentile).</p>`
       : `<p class="meta" style="margin-top:8px">Default spike lines: rise above +${round(L.rise)} mg/dL is a spike, above +${round(L.severe_rise)} a big spike. Restart the server to use your own (75th / 90th percentile of your meals).</p>`;
@@ -885,7 +937,7 @@
   // The model barely reacts to sugar, so the server adds grams of sugar × this patient's rise per gram of carbs.
   function sugarNote(r) {
     const s = r.sugar_adjustment;
-    if (!s || !s.sugar_g) return '';
+    if (!s || s.sugar_g < 0.5) return '';
     const peak = Math.max(...s.mg_dl);
     return `<p class="meta" style="margin-top:10px">Includes a sugar adjustment: ${s.sugar_g.toFixed(0)} g sugar × ${s.mg_dl_per_g} mg/dL per g
     (${s.personal ? 'your own carb response' : 'default carb response'}) adds up to +${round(peak)} mg/dL on top of the model.
@@ -989,6 +1041,7 @@
     const selected = /^\d+$/.test(item.portionKey || '') ? u.portions[+item.portionKey] : null;
     const standard = selected
       ? `Selected amount: <b>${esc(item.portionCount ?? 1)} × ${esc(selected.label)} (${itemGrams(item)} g total)</b>`
+      : !noPortion ? `Selected amount: <b>${itemGrams(item)} g</b>`
       : dp ? `USDA reference portion: <b>${esc(dp.label)} (${dp.grams} g)</b>`
       : `USDA lists no standard portion for this food.`;
     const macros = `${showNum(m.kcal)} kcal · Carbs ${showNum(m.carbs_g)} g · Protein ${showNum(m.protein_g)} g · Fat ${showNum(m.fat_g)} g`;
@@ -997,7 +1050,7 @@
     if (u.missing && u.missing.length) notes.push('USDA is missing: ' + u.missing.join(', ') + '.');
     return `<div class="card" style="margin-top:8px;padding:14px 16px">
     <div class="small" style="color:var(--teal);font-weight:700">${standard}</div>
-    <div style="margin-top:4px;font-size:13px;color:var(--muted-2)">Compare this to what's on your plate.</div>
+    ${item.portionAssumed ? `<div class="hint">${dp || selected ? 'A standard serving was assumed.' : 'No standard serving is available; 100 g was assumed.'} Please double-check the ${itemGrams(item)} g amount.</div>` : ''}
     <div style="margin-top:10px;font-size:15px">${per100 ? '<span class="muted small">per 100 g · </span>' : `<span class="muted small">for ${grams} g · </span>`}${macros}</div>
     <div class="row" style="margin-top:10px;gap:12px;align-items:center">
       <button type="button" class="link-btn ghost" data-action="toggle-per100" data-index="${item._i}" ${noPortion ? 'disabled' : ''}>${noPortion ? 'Choose a portion first' : per100 ? 'Show selected portion' : 'Show per 100 g'}</button>
@@ -1116,12 +1169,12 @@
     for (let d = 1; d <= D.lastDay; d++) {
       const start = D.first + (d - 1) * DAY, hasMeals = D.meals.some(m => m.day === d) || savedMeals().some(m => m.day === d);
       const cls = d === D.lastDay ? ' today' : S.sheetDay === d ? ' sel' : '';
-      cells.push(`<button data-action="open-day" data-day="${d}" aria-label="Day ${d}, ${shortDate(start)}, view day"><span class="cal-cell${cls}">${new Date(start).getUTCDate()}
+      cells.push(`<button data-action="open-day" data-day="${d}" aria-label="Day ${d}, ${shortDate(start)}, view day"><span class="cal-cell${cls}">${shown(start).getUTCDate()}
         <span class="cal-dots"><i style="background:${d === D.lastDay ? 'var(--bg)' : d >= 8 ? 'var(--lilac)' : 'var(--teal)'}"></i><i style="background:var(--coral);opacity:${hasMeals ? 1 : 0}"></i></span></span></button>`);
     }
     return `<main data-screen-label="Calendar">${head}
   <p class="lede">Days 1–7 build your baseline. Predictions start on day 8, ${shortDate(D.day8)} at ${clock(D.day8)}. Each square is a 24-hour block from your first reading.</p>
-  <div class="cal-head"><h2>${MONTHS[new Date(D.first).getUTCMonth()]} ${new Date(D.first).getUTCFullYear()}</h2><span class="muted" style="font-size:14px">${D.lastDay} day${D.lastDay === 1 ? '' : 's'}</span></div>
+  <div class="cal-head"><h2>${monthSpan(D.first, D.first + (D.lastDay - 1) * DAY)}</h2><span class="muted" style="font-size:14px">${D.lastDay} day${D.lastDay === 1 ? '' : 's'}</span></div>
   <div class="cal-grid">${cells.join('')}</div>
   <div class="legend sm"><span><i style="background:var(--teal)"></i>Learning day</span><span><i style="background:var(--lilac)"></i>Prediction day</span><span><i style="background:var(--coral)"></i>Meals logged</span></div>
 </main>`;
@@ -1193,7 +1246,7 @@
 
   function viewReminders() {
     const items = [['Breakfast', '8:00 AM'], ['Lunch', '12:30 PM'], ['Dinner', '7:00 PM']];
-    return `<main data-screen-label="Reminders"><header class="top"><div><div class="greet">${greeting()}, ${esc(S.user || 'there')}</div>${brand()}</div></header>
+    return `<main data-screen-label="Reminders"><header class="top"><div><div class="greet">${greeting()}, ${esc(displayName(S.user) || 'there')}</div>${brand()}</div></header>
   <div style="margin-top:28px;background:var(--teal-deep);border-radius:28px;padding:20px">
     <div style="display:flex;align-items:center;gap:8px;color:var(--teal);font-size:18px;font-weight:700">${icon(IC.bell, 18)}Smart nudges</div>
     <p style="margin:8px 0 0;font-size:15px;line-height:1.5;color:var(--muted)">Reminder preferences are saved on this device. Notifications aren't connected yet.</p></div>
@@ -1214,7 +1267,7 @@
   <div class="profile-intro"><div class="eyebrow" style="margin-top:28px">YOUR PROFILE</div><h1 class="title lg">Made for you.</h1></div>
   <div class="profile-hero" style="display:flex;flex-direction:column;align-items:center;margin-top:24px">
     <div class="avatar">${icon(IC.user, 44, 1.8)}<span class="heart">${icon(IC.heart, 15, 2.2)}</span></div>
-    <div class="num" style="font-size:28px;margin-top:18px">${esc(S.user)}</div>
+    <div class="num" style="font-size:28px;margin-top:18px">${esc(displayName(S.user))}</div>
     <div style="font-size:16px;color:var(--muted-2);margin-top:4px">${S.admin ? 'Administrator account' : 'Patient account'}</div>
   </div>
   <div class="profile-body">
@@ -1243,11 +1296,88 @@
 </main>`;
   }
 
+  // ---------------------------------------------------------------- smartwatch companion
+  // A watch face that drops down from the menu, fed by the same live replay and forecasts as the app.
+  const WATCH_SCREENS = ['Glucose', 'Last meal', 'Spike lines'];
+  function watchGlucose(D) {
+    const cur = D.last ? round(D.last.g) : null;
+    const last30 = D.last ? between(D.last.t - 30 * MIN, D.last.t) : [];
+    const slope = last30.length > 1 ? (last30[last30.length - 1].g - last30[0].g) / ((last30[last30.length - 1].t - last30[0].t) / MIN) : 0;
+    const arrow = slope >= 2 ? '⇈' : slope >= 1 ? '↗' : slope <= -2 ? '⇊' : slope <= -1 ? '↘' : '→';
+    const color = cur == null ? '#9aa3ab' : cur > HIGH ? '#ff8b85' : cur < LOW ? '#c4a5f5' : '#5ee3a0';
+    const C = 2 * Math.PI * 78, sweep = 0.75, frac = cur == null ? 0 : Math.min(1, Math.max(0, (cur - 40) / 260));
+    const pts = D.last ? between(D.last.t - 2 * HOUR, D.last.t) : [];
+    let spark = '';
+    if (pts.length > 1) {
+      const lo = Math.min(...pts.map(p => p.g)) - 5, hi = Math.max(...pts.map(p => p.g)) + 5;
+      spark = `<svg class="w-spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.map(p =>
+        f1((p.t - pts[0].t) / (pts[pts.length - 1].t - pts[0].t) * 100) + ',' + f1(24 - (p.g - lo) / (hi - lo) * 22)).join(' ')}" style="fill:none;stroke:${color};stroke-width:2;stroke-linecap:round;stroke-linejoin:round" vector-effect="non-scaling-stroke"></polyline></svg>`;
+    }
+    return `<svg class="w-ring" viewBox="0 0 180 180" aria-hidden="true">
+      <circle cx="90" cy="90" r="78" transform="rotate(135 90 90)" style="fill:none;stroke:#1d2024;stroke-width:9;stroke-linecap:round;stroke-dasharray:${f1(C * sweep)} ${f1(C)}"></circle>
+      <circle class="w-arc" cx="90" cy="90" r="78" transform="rotate(135 90 90)" style="--len:${f1(C * sweep * frac)};fill:none;stroke:${color};stroke-width:9;stroke-linecap:round;stroke-dasharray:${f1(C * sweep * frac)} ${f1(C)}"></circle></svg>
+    <div class="w-center"><div class="w-label"><span class="w-dot"></span>${S.live && !S.live.paused ? 'LIVE' : 'PAUSED'}</div>
+      <div class="w-value" style="color:${color}">${cur ?? '–'}<span class="w-arrow">${arrow}</span></div>
+      <div class="w-unit">mg/dL</div>${spark}</div>`;
+  }
+  function watchMeal() {
+    const p = S.pred ? summarize(S.pred) : null, m = savedMeals()[savedMeals().length - 1];
+    const F = p || m;
+    if (!F) return `<div class="w-center"><div class="w-label">LAST MEAL</div><div class="w-big">No meal yet</div>
+      <button class="w-pill" data-action="watch-open-app">Check a meal</button></div>`;
+    const level = F.level, color = level === 'high' ? '#ff8b85' : level === 'moderate' ? '#f5c84c' : '#5ee3a0';
+    const t = p ? p.t : ms(m.meal_time), base = F.base, h = F.h;
+    const peak = Math.max(...h.map(z => z.v)), vals = [base, ...h.map(z => z.v)];
+    const lo = Math.min(...vals) - 5, hi = Math.max(...vals) + 5;
+    const line = vals.map((v, i) => f1(i * 25) + ',' + f1(24 - (v - lo) / (hi - lo) * 22)).join(' ');
+    const name = p ? S.pred.dietary_intake : m.food;
+    return `<div class="w-center"><div class="w-label">${p ? 'WHAT IF' : 'CONFIRMED'} · ${clock(t)}</div>
+      <div class="w-verdict" style="color:${color}">${VERDICTS[level]}</div>
+      <div class="w-food">${esc(name.length > 26 ? name.slice(0, 25) + '…' : name)}</div>
+      <svg class="w-spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="${line}" style="fill:none;stroke:${color};stroke-width:2;stroke-dasharray:4 3" vector-effect="non-scaling-stroke"></polyline></svg>
+      <div class="w-unit">peak ~${round(peak)} · rise +${Math.max(0, round(peak - base))}</div></div>`;
+  }
+  function watchLimits(D) {
+    const L = limits(), s24 = D.last ? rangeStats(between(D.last.t - DAY, D.last.t)) : { tir: null };
+    return `<div class="w-center"><div class="w-label">${L.personal ? 'YOUR SPIKE LINES' : 'DEFAULT LINES'}</div>
+      <div class="w-rows"><div><b style="color:#f5c84c">+${round(L.rise)}</b><span>spike · 75th</span></div>
+      <div><b style="color:#ff8b85">+${round(L.severe_rise)}</b><span>big · 90th</span></div>
+      <div><b style="color:#4fdfdc">${s24.tir ?? '–'}%</b><span>in range 24 h</span></div></div></div>`;
+  }
+  function viewWatch() {
+    if (!S.watch) return '';
+    const D = S.data, enter = S.watchEnter, swap = S.watchSwap;
+    S.watchEnter = false; S.watchSwap = false;
+    const screen = S.watchScreen || 0;
+    const body = !D ? `<div class="w-center"><div class="w-big">No data</div></div>`
+      : screen === 0 ? watchGlucose(D) : screen === 1 ? watchMeal() : watchLimits(D);
+    const alert = D && D.last && (D.last.g > HIGH || (S.pred && summarize(S.pred).level === 'high'));
+    const now = D ? D.now : Date.now();
+    return `<div class="watch-scrim" data-action="watch-close"></div>
+  <div class="watch-drop${enter ? ' enter' : ''}" role="dialog" aria-label="Glympse watch">
+    <div class="watch${enter && alert ? ' buzz' : ''}">
+      <div class="w-strap top"></div>
+      <div class="w-case">
+        <button class="w-crown" data-action="watch-next" aria-label="Next watch screen"></button>
+        <button class="w-side" data-action="watch-open-app" aria-label="Open in the app"></button>
+        <div class="w-screen${enter ? ' fresh' : ''}" data-action="watch-next">
+          <div class="w-top"><span>${D ? DAYS[shown(now).getUTCDay()] + ' ' + shown(now).getUTCDate() : ''}</span><span>${D ? clock(now).replace(' ', '') : ''}</span></div>
+          <div class="w-body${swap ? ' swap' : ''}">${body}</div>
+          <div class="w-dots">${WATCH_SCREENS.map((_, i) => `<i class="${i === screen ? 'on' : ''}"></i>`).join('')}</div>
+        </div>
+      </div>
+      <div class="w-strap bottom"></div>
+    </div>
+    <p class="watch-hint">Tap the screen or crown for ${esc(WATCH_SCREENS[(screen + 1) % 3].toLowerCase())} · side button opens the app</p>
+  </div>`;
+  }
+
   function viewNav() {
     const item = (id, label, ic) => `<button class="tab" data-action="go" data-tab="${id}" ${S.tab === id ? 'aria-current="page"' : ''}><span>${icon(ic, 22, 1.9)}</span>${label}</button>`;
     return `<nav class="main" aria-label="Main"><div class="nav-brand">${brand(26)}</div>${item('today', 'Today', IC.today)}${item('calendar', 'Calendar', IC.cal)}
   <div class="fab-wrap"><button class="fab" data-action="go" data-tab="log" aria-label="Log a meal" ${S.tab === 'log' ? 'aria-current="page"' : ''}>${icon(IC.plus, 30, 2.4)}<span class="fab-label">What if</span></button></div>
-  ${item('meds', 'Meds', IC.pill)}${item('profile', 'Profile', IC.user)}</nav>`;
+  ${item('meds', 'Meds', IC.pill)}${item('profile', 'Profile', IC.user)}
+  <button class="tab" data-action="watch-toggle" aria-expanded="${!!S.watch}" ${S.watch ? 'aria-current="true"' : ''}><span>${icon(IC.watch, 22, 1.9)}</span>Watch</button></nav>`;
   }
 
   const VIEWS = { signin: viewSignin, today: viewToday, log: viewLog, calendar: viewCalendar, meds: viewMeds, reminders: viewReminders, profile: viewProfile };
@@ -1255,7 +1385,7 @@
   function render() {
     const signedOut = S.tab === 'signin';
     root.className = 'app' + (signedOut ? ' no-nav' : '');
-    root.innerHTML = VIEWS[S.tab]() + (signedOut ? '' : viewSheet() + (S.tab === 'log' ? viewAlts() : '') + viewNav()) +
+    root.innerHTML = VIEWS[S.tab]() + (signedOut ? '' : viewSheet() + (S.tab === 'log' ? viewAlts() + viewPredInfo() : '') + viewNav() + viewWatch()) +
       (S.toast ? `<div class="toast${S.toastBad ? ' bad' : ''}" role="status">${esc(S.toast)}</div>` : '');
     syncLogButtons();
   }
@@ -1303,6 +1433,12 @@
     else if (a === 'predict') predict();
     else if (a === 'try-alt') tryAlternative(el.dataset.value);
     else if (a === 'open-alts') { S.altsOpen = true; render(); }
+    else if (a === 'pred-info') { S.predInfo = true; render(); }
+    else if (a === 'close-pred-info') { S.predInfo = false; render(); }
+    else if (a === 'watch-toggle') { S.watch = !S.watch; S.watchEnter = S.watch; render(); }
+    else if (a === 'watch-close') { S.watch = false; render(); }
+    else if (a === 'watch-next') { S.watchScreen = ((S.watchScreen || 0) + 1) % WATCH_SCREENS.length; S.watchEnter = false; S.watchSwap = true; render(); }
+    else if (a === 'watch-open-app') { S.watch = false; go(S.pred || !savedMeals().length ? 'log' : 'today'); }
     else if (a === 'close-alts') { S.altsOpen = false; render(); }
     else if (a === 'save-diet') saveDiet(el.dataset.value);
     else if (a === 'remove-diet') removeDiet(el.dataset.value);
@@ -1321,8 +1457,13 @@
       const item = S.builder.items[+d.item];
       if (d.part === 'name') {
         // A typed/chosen food: reset any photo/USDA state and look it up fresh in USDA.
-        item.name = t.value; item.label = null; item.selectedLabel = null; item.fdcId = null;
+        const stated = typedWeight(t.value);
+        item.name = stated?.name ?? t.value; item.label = null; item.selectedLabel = null; item.fdcId = null;
         item.predictions = null; item.needsConfirmation = false; item.portionKey = null;
+        item.grams = stated?.grams ?? null; item.customGrams = stated?.grams ?? '';
+        item.amount = ''; item.portionCount = 1; item.portionAssumed = false;
+        item.dictatedAmount = null; item.voiceWarnings = null;
+        if (stated) item.portionKey = 'custom';
         lookupFood(+d.item);  // async; re-renders with USDA portions + macros
       } else if (d.part === 'portion') {
         setPortion(+d.item, t.value);
@@ -1330,8 +1471,10 @@
         item.portionCount = Math.max(0, +t.value || 0);
         setPortion(+d.item, item.portionKey);
       } else if (d.part === 'custom-grams') {
+        item.portionAssumed = false;
         item.customGrams = t.value; item.grams = +t.value || null; render();
       } else if (d.part === 'amount') {
+        item.portionAssumed = false;
         if (t.value === 'custom') { item.portionKey = 'custom'; item.grams = itemGrams(item); item.customGrams = item.grams; }
         else { item.amount = +t.value; item.grams = null; item.portionKey = null; }
         render();
@@ -1352,7 +1495,9 @@
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (S.altsOpen) { S.altsOpen = false; render(); } else if (S.sheetDay) { S.sheetDay = null; render(); }
+    if (S.watch) { S.watch = false; render(); }
+    else if (S.predInfo) { S.predInfo = false; render(); }
+    else if (S.altsOpen) { S.altsOpen = false; render(); } else if (S.sheetDay) { S.sheetDay = null; render(); }
   });
 
   api.onUnauthorized = () => { resetSession(); S.signinError = 'Your sign-in expired. Please sign in again.'; render(); };
