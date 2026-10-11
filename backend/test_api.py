@@ -171,50 +171,21 @@ class ApiTests(unittest.TestCase):
             other = self.signed_up(client, "bob")
             self.assertEqual(client.get("/history/readings", headers=other).status_code, 409)
 
-    def test_dev_admin_may_use_short_password_only_in_dev(self):
-        with tempfile.TemporaryDirectory() as directory:
-            client = self.make_client(directory, admin=("admin@12345", "dev123"), dev=True)
-            login = client.post("/sessions", json={"username": "admin@12345", "password": "dev123"})
-            self.assertEqual(login.status_code, 200, login.text)
-            self.assertEqual(client.post("/sessions", json={"username": "admin@12345", "password": "dev124"}).status_code, 401)
-            with self.assertRaises(ValidationError):
-                self.make_client(directory, admin=("admin@12345", "dev123"), dev=False)
+    def test_legacy_admin_configuration_rejected_even_in_dev(self):
+        for dev in (True, False):
+            with tempfile.TemporaryDirectory() as directory:
+                with self.assertRaisesRegex(RuntimeError, "Local admin passwords are retired"):
+                    self.make_client(directory, admin=("synthetic-admin", "old-password"), dev=dev)
 
-    def test_dev_seeds_patient_accounts_from_dataset_workbooks(self):
-        with tempfile.TemporaryDirectory() as directory:
-            data = Path(directory) / "data"
-            data.mkdir()
-            workbook = fixture(days=8)
-            workbook["Date"] = workbook.Date.dt.strftime("%Y-%m-%d %H:%M:%S")
-            workbook.drop(columns=["Patient", "Recording"]).to_excel(data / "9001_0_20250101.xlsx", index=False)
-            workbook.drop(columns=["Patient", "Recording"]).to_excel(data / "9002_0_20250101.xlsx", index=False)
-            seeded = dict(seed_recordings=["9001_0_20250101", "9002_0_20250101:own-pass"],
-                          seed_password="dev123", data_dir=str(data))
-            client = self.make_client(directory, dev=True, **seeded)
-            self.assertEqual(client.get("/health").json()["example_users"], ["patient9001", "patient9002"])
-            self.assertNotIn("dev123", client.get("/health").text)
-            self.assertNotIn("own-pass", client.get("/health").text)
-            own = client.post("/sessions", json={"username": "patient9002", "password": "own-pass"})
-            self.assertEqual(own.status_code, 200, own.text)
-            self.assertEqual(client.post("/sessions", json={"username": "patient9002", "password": "dev123"}).status_code, 401)
-            login = client.post("/sessions", json={"username": "patient9001", "password": "dev123"})
-            self.assertEqual(login.status_code, 200, login.text)
-            headers = {"Authorization": "Bearer " + login.json()["access_token"]}
-            status = client.get("/history", headers=headers).json()
-            self.assertEqual((status["rows"], status["ready_for_day8"], status["revision"]), (8 * 288, True, 1))
-            self.assertEqual(client.get("/me", headers=headers).json(), {"username": "patient9001", "admin": False})
-            # Restarting doesn't reload or overwrite an account that already has history.
-            again = self.make_client(directory, dev=True, **seeded)
-            self.assertEqual(again.get("/history", headers=headers).json()["revision"], 1)
-            # A username in the config renames the existing account; its history comes along.
-            renamed = self.make_client(directory, dev=True, **{**seeded, "seed_recordings": ["9001_0_20250101=jane"]})
-            self.assertEqual(renamed.get("/me", headers=headers).json()["username"], "jane")
-            self.assertEqual(renamed.get("/history", headers=headers).json()["revision"], 1)
-            self.assertEqual(renamed.post("/sessions", json={"username": "patient9001", "password": "dev123"}).status_code, 401)
-            with self.assertRaises(RuntimeError):
-                self.make_client(directory, dev=False, **seeded)
-            production = self.make_client(directory, dev=False)
-            self.assertEqual(production.get("/health").json()["example_users"], [])
+    def test_legacy_dataset_seeding_rejected_without_writes(self):
+        for dev in (True, False):
+            with tempfile.TemporaryDirectory() as directory:
+                with self.assertRaisesRegex(RuntimeError, "account seeding is retired"):
+                    self.make_client(directory, seed_recordings=["synthetic-recording"], dev=dev)
+        with patch.dict(os.environ, {"GLYIMPSE_SEED_RECORDINGS": "synthetic-recording"}):
+            with self.assertRaisesRegex(RuntimeError, "account seeding is retired"):
+                create_app(storage=self.storage, auth=self.auth)
+        self.assertEqual(self.storage.patients.scan()["Count"], 0)
 
     def test_spike_assessment_and_what_if_alternatives(self):
         with tempfile.TemporaryDirectory() as directory:

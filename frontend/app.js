@@ -96,6 +96,7 @@
     pred: null, predKey: null, predBusy: false, predError: null, confirmBusy: false,
     alts: null, altsBusy: false, altsError: null,
     admin: false,
+    dailyExplanations: null,
     signinBusy: false, signinError: null, pwShown: false,
     sheetDay: null, toast: null, toastBad: false,
     reminders: store.get('glyimpse_reminders', [true, true, true])
@@ -111,8 +112,10 @@
   const savedMeals = () => S.meals;
   function shapeMeal(m) {
     const F = summarize(m);
-    return { meal_time: m.meal_time, food: m.dietary_intake, medication: m.medication || {}, day: m.day,
-      base: F.base, h: F.h.map(z => ({ min: z.min, v: z.v })), verdict: F.verdict, level: F.level };
+    return { images: m.images || [], meal_time: m.meal_time, food: m.dietary_intake, medication: m.medication || {}, day: m.day,
+      base: F.base, h: F.h.map(z => ({ min: z.min, v: z.v })), verdict: F.verdict, level: F.level,
+      feature_contributions: m.feature_contributions || [],
+      predictions: m.predictions || [] };
   }
 
   // ---------------------------------------------------------------- derived data
@@ -227,6 +230,7 @@
       applyLive(await api.live(), false);
       if (!S.catalog) S.catalog = await api.catalog();
       await loadMeals();
+      try { S.dailyExplanations = await api.dailyExplanations(); } catch (e) { S.dailyExplanations = null; }
     } catch (e) {
       S.status = null; S.data = null; S.live = null;
       if (e.kind === 'auth') return;           // onUnauthorized already moved us to sign-in
@@ -269,7 +273,11 @@
   async function control(action, extra) {
     try {
       applyLive(await api.control(action, extra), false);
-      if (action === 'restart') { await loadMeals(); S.pred = null; S.alts = null; }
+      if (action === 'restart') {
+        await loadMeals();
+        S.pred = null; S.alts = null;
+        try { S.dailyExplanations = await api.dailyExplanations(); } catch (e) {}
+      }
       render(); schedulePoll();
     } catch (e) { toast(e.message, true); }
   }
@@ -378,6 +386,7 @@
     const b = S.builder, req = { dietary_intake: mealText(), ...extra };
     const foods = resolvedFoods().map(f => ({ name: f.name, grams: f.grams, carbs_g: f.carbs_g, sugar_g: f.sugar_g }));
     if (foods.length) req.foods = foods;
+    req.image_ids = S.builder.items.filter(item => item.imageId).map(item => item.imageId);
     if (b.insulin.name && b.insulin.dose) req.insulin = { name: b.insulin.name, dose: +b.insulin.dose };
     if (b.tablet.name && b.tablet.dose) req.tablet = { name: b.tablet.name, dose: +b.tablet.dose };
     return req;
@@ -456,16 +465,40 @@
   // ---- Photo identification for a row.
   function pickPhoto(i) {
     const input = document.createElement('input');
-    input.type = 'file'; input.accept = 'image/*';
+    input.type = 'file'; input.accept = 'image/jpeg,image/png,image/webp';
     input.setAttribute('capture', 'environment');
     input.onchange = () => { if (input.files && input.files[0]) identifyPhoto(i, input.files[0]); };
     input.click();
   }
+  async function showFoodImage(imageId) {
+    const dialog = document.createElement('dialog');
+    dialog.style.cssText = 'max-width:90vw;max-height:90vh;padding:20px;border-radius:16px';
+    const img = document.createElement('img'); img.alt = 'Saved meal photo';
+    img.style.cssText = 'display:block;max-width:75vw;max-height:65vh;object-fit:contain';
+    img.referrerPolicy = 'no-referrer';
+    const message = document.createElement('p');
+    const refresh = document.createElement('button'); refresh.textContent = 'Reload photo';
+    const close = document.createElement('button'); close.textContent = 'Close';
+    const load = async () => {
+      message.textContent = 'Loading private photo...';
+      try { const result = await api.foodImageUrl(imageId); img.src = result.url; }
+      catch (e) { message.textContent = e.message; }
+    };
+    img.onload = () => { message.textContent = ''; };
+    img.onerror = () => { message.textContent = 'Photo link expired or failed. Reload to request a fresh link.'; };
+    refresh.onclick = load; close.onclick = () => dialog.close();
+    dialog.onclose = () => dialog.remove();
+    dialog.append(img, message, refresh, close); document.body.append(dialog); dialog.showModal(); await load();
+  }
+
   async function identifyPhoto(i, file) {
     const item = S.builder.items[i];
     if (!item) return;
+    item.imageId = null;
     item.identifyBusy = true; item.identifyError = null; item.predictions = null; render();
     try {
+      const stored = await api.uploadFoodImage(file);
+      item.imageId = stored.image_id;
       const form = new FormData(); form.append('image', file);
       const res = await api.identifyFood(form);
       item.predictions = res.predictions; item.needsConfirmation = res.needs_confirmation;
@@ -514,6 +547,7 @@
   }
 
   async function predict() {
+    if (S.builder.items.some(item => item.identifyBusy)) { toast('Wait for the photo upload to finish.'); return; }
     const req = mealRequest();
     if (S.builder.items.some(item => item.name && !(itemGrams(item) > 0))) {
       S.predError = { message: 'Choose a portion or enter grams for every food before predicting.' };
@@ -552,6 +586,7 @@
 
   // "I ate this": same meal at the same live time as the what-if, now saved to compare with what happens.
   async function confirmMeal() {
+    if (S.builder.items.some(item => item.identifyBusy)) { toast("Wait for the photo upload to finish."); return; }
     if (!S.pred || S.predKey !== formKey()) return;
     S.confirmBusy = true; render();
     try {
@@ -562,6 +597,7 @@
         total: { kcal: sum('kcal'), carbs_g: sum('carbs_g'), protein_g: sum('protein_g'),
                  fat_g: sum('fat_g'), fiber_g: sum('fiber_g'), sugar_g: sum('sugar_g') } };
       await loadMeals();
+      try { S.dailyExplanations = await api.dailyExplanations(); } catch (e) {}
       applyLive(await api.live(), false);
       S.pred = null; S.predKey = null; S.alts = null; S.altsError = null;
       S.confirmBusy = false;
@@ -574,7 +610,7 @@
 
   function syncLogButtons() {
     const save = root.querySelector('[data-action="save-meal"]');
-    if (save) save.disabled = !S.pred || S.predKey !== formKey() || S.confirmBusy;
+    if (save) save.disabled = !S.pred || S.predKey !== formKey() || S.confirmBusy || S.builder.items.some(item => item.identifyBusy);
     const stale = root.querySelector('[data-stale]');
     if (stale) stale.hidden = !S.pred || S.predKey === formKey();
   }
@@ -1083,6 +1119,7 @@
     if (item.voiceWarnings && !(itemGrams(item) > 0)) html += '<div class="hint">Choose a portion or enter grams for this food.</div>';
     if (item.voiceWarnings) html += `<button type="button" class="link-btn" data-action="search-toggle" data-index="${i}">Search USDA for this food</button>`;
     if (item.identifyBusy) html += `<div class="hint" role="status">Identifying photo…</div>`;
+    if (item.imageId) html += `<button type="button" class="link-btn" data-action="view-food-image" data-image-id="${esc(item.imageId)}">View saved photo</button><span class="hint"> Photo validated; attached when you confirm the meal.</span>`;
     if (item.identifyError) html += `<div class="hint" style="color:var(--coral)">${esc(photoErrorText(item.identifyError))}</div>`;
     if (item.predictions && item.predictions.length) {
       const top3 = item.predictions.slice(0, 3);
@@ -1131,7 +1168,7 @@
     const before8 = L && D.now < D.day8;
     const note = !st.ready_for_day8 ? `<div class="banner"><div class="eyebrow">NOT ENOUGH DATA</div><p>Forecasts need each of the first 7 days to have at least 230 CGM readings.</p></div>`
       : before8 ? `<div class="banner"><div class="eyebrow">DAY 8 HASN'T STARTED</div><p>Forecasts start at ${clock(D.day8)} on day 8.</p></div>` : '';
-    const canConfirm = S.pred && S.predKey === formKey() && !S.confirmBusy;
+    const canConfirm = S.pred && S.predKey === formKey() && !S.confirmBusy && !S.builder.items.some(item => item.identifyBusy);
     const forecast = predictionCard();
     return `<main data-screen-label="What if">
   <div class="log-intro">
@@ -1188,6 +1225,7 @@
       return `<div class="card" style="margin-top:10px"><div class="card-head" style="align-items:flex-start"><div style="min-width:0"><div class="name" style="font-size:16px;font-weight:700;overflow-wrap:anywhere">${esc(m.food)}</div>
         <div class="sub small muted">${clock(F.t)} · day ${m.day}</div></div><span class="chip ${m.level === 'high' ? 'spike' : m.level === 'moderate' ? 'warn' : 'ok'}">${VERDICTS[m.level]}</span></div>
         ${medicationText(m.medication) ? `<div class="sub small muted">${esc(medicationText(m.medication))}</div>` : ''}
+        ${(m.images || []).map(image => `<button type="button" class="link-btn" data-action="view-food-image" data-image-id="${esc(image.image_id)}">View meal photo</button>`).join('')}
         ${horizonTiles(F)}<div style="margin-top:10px;font-size:14px;line-height:1.45;color:var(--text-2)">${esc(peakText(F))}</div>
         ${actual != null ? `<div style="margin-top:4px;font-size:13px;color:var(--muted-2)">Real peak so far: ${actual} mg/dL</div>` : ''}</div>`;
     }).join('');
@@ -1442,6 +1480,7 @@
     else if (a === 'close-alts') { S.altsOpen = false; render(); }
     else if (a === 'save-diet') saveDiet(el.dataset.value);
     else if (a === 'remove-diet') removeDiet(el.dataset.value);
+    else if (a === 'view-food-image') showFoodImage(el.dataset.imageId);
     else if (a === 'save-meal') confirmMeal();
     else if (a === 'live-toggle') control(S.live.paused ? 'play' : 'pause');
     else if (a === 'live-restart') { if (confirm('Restart the replay at the start of day 8? Confirmed meals are cleared.')) control('restart'); }

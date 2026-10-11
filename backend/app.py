@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from .accounts import Accounts
 from .auth import CognitoAuth
+from .images import Images, image_router
 from .prediction_summary import summarize_prediction
 from .food.routes import build_food_router
 from .ml.explain import daily_top_three
@@ -92,6 +93,7 @@ class MealRequest(BaseModel):
     tablet: Dose | None = None
     # False = what-if only. True = the user ate it: save the forecast to compare with what happens.
     confirm: bool = False
+    image_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class Control(BaseModel):
@@ -103,7 +105,7 @@ class Control(BaseModel):
 
 def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
                allowed_origins=None, frontend_dir=None, dev=None, evaluation_path=None,
-               seed_recordings=None, seed_password=None, data_dir=None, food_cache=None, storage=None, auth=None):
+               seed_recordings=None, seed_password=None, data_dir=None, food_cache=None, storage=None, auth=None, image_service=None):
     app = FastAPI(title="Glyimpse", version="1.1")
 
     @app.exception_handler(ClientError)
@@ -125,6 +127,7 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     artifact = Path(model_path or os.environ.get("GLYIMPSE_MODEL_PATH", ROOT / "artifacts/population.joblib"))
     accounts = storage if storage is not None else Accounts()
     authentication = auth if auth is not None else CognitoAuth()
+    images = image_service if image_service is not None else Images(accounts)
     bearer = HTTPBearer(auto_error=False)
     signup_open = env_flag("GLYIMPSE_ALLOW_SIGNUP") if allow_signup is None else allow_signup
     dev = os.environ.get("GLYIMPSE_ENV", "").strip().lower() == "dev" if dev is None else dev
@@ -133,20 +136,10 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
 
     # Local password seeding is deliberately disabled. Provision users in Cognito.
     example_users = []
-    if seed_recordings is None:
-        seed_recordings = [r.strip() for r in os.environ.get("GLYIMPSE_SEED_RECORDINGS", "").split(",") if r.strip()]
-    if seed_recordings:
-        if not dev:
-            raise RuntimeError("GLYIMPSE_SEED_RECORDINGS is for local development only (set GLYIMPSE_ENV=dev)")
-        default = seed_password or os.environ.get("GLYIMPSE_SEED_PASSWORD", "")
-        pairs = []
-        for entry in seed_recordings:
-            recording, _, own = entry.partition(":")
-            recording, _, name = recording.partition("=")
-            username = Login(username=name.strip(), password="x").username if name.strip() else ""
-            pairs.append((recording.strip(), Login(username="seed", password=own.strip() or default).password, username))
-        example_users = seed_patients(accounts, Path(data_dir or os.environ.get(
-            "GLYIMPSE_DATA_DIR", ROOT.parent / "data/frontend_test")), pairs)
+    if seed_recordings or os.environ.get("GLYIMPSE_SEED_RECORDINGS", "").strip():
+        raise RuntimeError("Local dataset account seeding is retired; use Cognito and authenticated history uploads")
+    if admin or os.environ.get("GLYIMPSE_ADMIN_USERNAME", "").strip():
+        raise RuntimeError("Local admin passwords are retired; provision confirmed Cognito users")
 
     def identity(credentials: HTTPAuthorizationCredentials = Depends(bearer)):
         if not credentials:
@@ -155,6 +148,8 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
 
     def user(claims=Depends(identity)):
         return claims["sub"]
+
+    app.include_router(image_router(images, user))
 
     def history(user_id):
         saved, revision = accounts.history(user_id)
@@ -380,15 +375,17 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     @app.post("/predict")
     def prediction(payload: MealRequest, user_id=Depends(user)):
         try:
+            attached_images = images.validated(user_id, payload.image_ids)
             ctx = meal_context(payload, user_id)
             text = payload.dietary_intake
             result = forecast(ctx, text)
             spike = {**assess(result, text, ctx["me"]["thresholds"]), "sweet_items": variants(text)["sweet_items"]}
-            meal = {**result, "dietary_intake": text, "medication": ctx["treatments"], "spike": spike}
+            meal = {**result, "dietary_intake": text, "medication": ctx["treatments"], "spike": spike, "images": attached_images}
             if payload.confirm:
                 without = forecast_meal(ctx["model_raw"], ctx["stamp"], "No food ingested", ctx["recent"],
                                         ctx["bundle"], ctx["treatments"], history=ctx["raw"])
                 meal["meal_effect"] = personal.meal_effect(result, without)
+                images.associate(user_id, attached_images)
                 accounts.save_forecast(user_id, meal, ctx["revision"])
             return {**meal, "recent_cgm": ctx["recent"], "confirmed": payload.confirm}
         except ValueError as exc:
@@ -398,7 +395,7 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     def confirmed_meals(user_id=Depends(user)):
         """Meals the user confirmed eating, each with the forecast made at that time."""
         keys = ["meal_time", "day", "dietary_intake", "medication", "baseline_glucose", "personalized", "predictions",
-                "spike", "meal_effect", "sugar_adjustment", "uncertainty", "explanation"]
+                "spike", "meal_effect", "sugar_adjustment", "uncertainty", "explanation", "images"]
         saved = accounts.forecasts(user_id, model_bundle()["version"])
         return {"meals": sorted(({k: m.get(k) for k in keys} for m in saved), key=lambda m: m["meal_time"])}
 

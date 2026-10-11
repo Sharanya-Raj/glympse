@@ -133,6 +133,25 @@
 
     // --- Photo/typed food -> USDA nutrients & standard portions ---
     /** Identify a food photo (FormData with an "image" field). -> { predictions, needs_confirmation }. */
+    async uploadFoodImage(file) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || !file.size || file.size > 5 * 1024 * 1024) {
+        throw new ApiError('invalid', 'Choose a JPEG, PNG or WebP image up to 5 MB.', 422);
+      }
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const intent = await this.request('POST', '/food/images/uploads', { json: { content_type: file.type, size_bytes: file.size } });
+        const form = new FormData();
+        Object.entries(intent.upload.fields).forEach(([key, value]) => form.append(key, value));
+        form.append('file', file); // S3 requires the file field last. No Cognito header goes to S3.
+        let uploaded;
+        try { uploaded = await fetch(intent.upload.url, { method: 'POST', body: form, signal: AbortSignal.timeout(60000), credentials: 'omit' }); }
+        catch (e) { throw new ApiError('offline', 'Photo upload failed or timed out. Select the photo again to retry.', 0); }
+        if (uploaded.status === 403 && attempt === 0) continue; // Renew an expired upload policy once.
+        if (!uploaded.ok) throw new ApiError('invalid', 'S3 rejected the photo upload. Select the photo again to retry.', uploaded.status);
+        return this.request('POST', '/food/images/' + intent.image_id + '/complete');
+      }
+    }
+    foodImageUrl(imageId) { return this.request('GET', '/food/images/' + encodeURIComponent(imageId)); }
+
     identifyFood(form) { return this.request('POST', '/food/identify', { form }); }
     dictateMeal(form, signal) { return this.request('POST', '/food/dictate', { form, signal }); }
     /** USDA nutrients + standard portions for a classifier label or typed food name. */
