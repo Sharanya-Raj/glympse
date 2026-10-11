@@ -3,7 +3,8 @@
  * message; there is deliberately no local/offline prediction fallback.
  */
 (function () {
-  const TOKEN_KEY = 'glyimpse_token';
+  const TOKEN_KEY = 'glyimpse_cognito_access_token';
+  localStorage.removeItem('glyimpse_token'); // Discard legacy SQLite sessions.
 
   class ApiError extends Error {
     constructor(kind, message, status) {
@@ -71,15 +72,14 @@
         case 403:
           throw new ApiError('forbidden', detail || 'Not allowed.', 403);
         case 409:
-          throw new ApiError('no_history', 'Upload your glucose history CSV first (Profile → Glucose history).', 409);
+          throw new ApiError(signIn ? 'auth' : (detail === 'Upload glucose history first' ? 'no_history' : 'conflict'), detail || 'Request conflicts with current data.', 409);
         case 413:
           throw new ApiError('too_large', detail || 'That file is too large (10 MB max).', 413);
         case 422:
           throw new ApiError('invalid', detail || 'The server could not use that input.', 422);
         case 503:
           if (path.startsWith('/food/')) throw new ApiError('unavailable', detail || 'Food service unavailable.', 503);
-          throw new ApiError('model_missing',
-            'The prediction model is missing on the server. An operator needs to run: python -m backend.ml.train', 503);
+          throw new ApiError('unavailable', detail || 'Backend service unavailable. Please try again later.', 503);
         default:
           throw new ApiError('server', detail || `Server error (${res.status}). Try again in a moment.`, res.status);
       }
@@ -91,6 +91,10 @@
       const data = await this.request('POST', '/sessions', { json: { username, password }, auth: false, signIn: true });
       this.setToken(data.access_token);
       return data;
+    }
+
+    confirmAccount(username, code) {
+      return this.request('POST', '/accounts/confirm', { json: { username, code }, auth: false });
     }
 
     async signOut() {

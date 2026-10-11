@@ -2,7 +2,6 @@
 import io
 import os
 from pathlib import Path
-import sqlite3
 import time
 from typing import Literal
 
@@ -11,9 +10,13 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
+from botocore.exceptions import BotoCoreError, ClientError
+from pydantic import BaseModel, Field, ConfigDict
 
 from .accounts import Accounts
+from .auth import CognitoAuth
+from .prediction_summary import summarize_prediction
 from .food.routes import build_food_router
 from .ml.explain import daily_top_three
 from .ml.service import (forecast_meal, load_population, readiness, recent_from_history,
@@ -21,7 +24,6 @@ from .ml.service import (forecast_meal, load_population, readiness, recent_from_
 from .ml import personal
 from .ml.catalog import INSULINS, TABLETS, catalog, insulin_text, tablet_text
 from .ml.spike import assess, variants
-from .seed import seed_patients
 
 ROOT = Path(__file__).resolve().parent
 SPEEDS = [300, 10, 3, 1]      # real seconds per 5-minute CGM reading; 300 = real time
@@ -50,9 +52,14 @@ class Credentials(BaseModel):
 
 
 class Login(BaseModel):
-    # Length rules apply when passwords are set; sign-in only checks the stored hash.
+    # Cognito verifies credentials; this service stores neither passwords nor tokens.
     username: str = Field(min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9_.@-]+$")
     password: str = Field(min_length=1, max_length=128)
+
+
+class Confirmation(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    code: str = Field(min_length=1, max_length=32)
 
 
 class Reading(BaseModel):
@@ -74,6 +81,7 @@ class FoodItem(BaseModel):
 
 
 class MealRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     # Omit to use the live clock's current time; later times are rejected (no peeking ahead).
     meal_time: str | None = None
     dietary_intake: str = Field(min_length=1, max_length=4000)
@@ -87,6 +95,7 @@ class MealRequest(BaseModel):
 
 
 class Control(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     action: Literal["play", "pause", "restart", "speed", "seek"]
     seconds_per_reading: float | None = None
     minutes: float | None = Field(default=None, ge=0)  # seek: minutes after the day-8 start
@@ -94,11 +103,16 @@ class Control(BaseModel):
 
 def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
                allowed_origins=None, frontend_dir=None, dev=None, evaluation_path=None,
-               seed_recordings=None, seed_password=None, data_dir=None, food_cache=None):
+               seed_recordings=None, seed_password=None, data_dir=None, food_cache=None, storage=None, auth=None):
     app = FastAPI(title="Glyimpse", version="1.1")
 
+    @app.exception_handler(ClientError)
+    @app.exception_handler(BotoCoreError)
+    async def aws_unavailable(request, exc):
+        return JSONResponse(status_code=503, content={"detail": "AWS service unavailable; retry or contact support"})
+
     origins = allowed_origins or [o.strip() for o in
-        os.environ.get("GLYIMPSE_ALLOWED_ORIGINS", "*").split(",") if o.strip()]
+        os.environ.get("GLYIMPSE_ALLOWED_ORIGINS", "").split(",") if o.strip()]
     # Bearer tokens travel in headers, not cookies, so credentials stay off (also required for "*").
     app.add_middleware(
         CORSMiddleware,
@@ -108,41 +122,25 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
         allow_headers=["Authorization", "Content-Type"],
     )
 
-    state = Path(state_dir or os.environ.get("GLYIMPSE_STATE_DIR", ROOT / "runtime"))
     artifact = Path(model_path or os.environ.get("GLYIMPSE_MODEL_PATH", ROOT / "artifacts/population.joblib"))
-    accounts = Accounts(state / "accounts.sqlite3")
+    accounts = storage if storage is not None else Accounts()
+    authentication = auth if auth is not None else CognitoAuth()
     bearer = HTTPBearer(auto_error=False)
     signup_open = env_flag("GLYIMPSE_ALLOW_SIGNUP") if allow_signup is None else allow_signup
     dev = os.environ.get("GLYIMPSE_ENV", "").strip().lower() == "dev" if dev is None else dev
     evaluation = Path(evaluation_path or os.environ.get(
         "GLYIMPSE_EVALUATION_PATH", ROOT.parent / "output_v.1/day8_actual_vs_predicted.csv"))
 
-    if admin is None and os.environ.get("GLYIMPSE_ADMIN_USERNAME"):
-        admin = (os.environ["GLYIMPSE_ADMIN_USERNAME"], os.environ.get("GLYIMPSE_ADMIN_PASSWORD", ""))
-    if admin:
-        # Outside GLYIMPSE_ENV=dev a short admin password is a startup error, never a silent default.
-        configured = (Login if dev else Credentials)(username=admin[0], password=admin[1])
-        accounts.ensure_user(configured.username, configured.password)
-
+    # Local password seeding is deliberately disabled. Provision users in Cognito.
     example_users = []
-    if seed_recordings is None:
-        seed_recordings = [r.strip() for r in os.environ.get("GLYIMPSE_SEED_RECORDINGS", "").split(",") if r.strip()]
-    if seed_recordings:
-        if not dev:
-            raise RuntimeError("GLYIMPSE_SEED_RECORDINGS is for local development only (set GLYIMPSE_ENV=dev)")
-        default = seed_password or os.environ.get("GLYIMPSE_SEED_PASSWORD", "")
-        pairs = []
-        for entry in seed_recordings:
-            recording, _, own = entry.partition(":")
-            pairs.append((recording.strip(), Login(username="seed", password=own.strip() or default).password))
-        example_users = seed_patients(accounts, Path(data_dir or os.environ.get(
-            "GLYIMPSE_DATA_DIR", ROOT.parent / "data/frontend_test")), pairs)
 
-    def user(credentials: HTTPAuthorizationCredentials = Depends(bearer)):
-        user_id = accounts.authenticate(credentials.credentials) if credentials else None
-        if not user_id:
+    def identity(credentials: HTTPAuthorizationCredentials = Depends(bearer)):
+        if not credentials:
             raise HTTPException(401, "Sign in with a valid bearer token")
-        return user_id
+        return authentication.authenticate(credentials.credentials)
+
+    def user(claims=Depends(identity)):
+        return claims["sub"]
 
     def history(user_id):
         saved, revision = accounts.history(user_id)
@@ -175,28 +173,30 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     def signup(payload: Credentials):
         if not signup_open:
             raise HTTPException(403, "Sign-up is disabled; ask the administrator for access")
-        try:
-            user_id = accounts.signup(payload.username, payload.password)
-        except sqlite3.IntegrityError:
-            raise HTTPException(409, "Username unavailable")
-        return {"user_id": user_id, "access_token": accounts.login(payload.username, payload.password),
-                "token_type": "bearer", "expires_in": 86400}
+        return authentication.signup(payload.username, payload.password)
+
+    @app.post("/accounts/confirm")
+    def confirm_account(payload: Confirmation):
+        authentication.confirm(payload.username, payload.code)
+        return {"confirmed": True}
 
     @app.post("/sessions")
     def signin(payload: Login):
-        token = accounts.login(payload.username, payload.password)
-        if not token:
-            raise HTTPException(401, "Invalid credentials")
-        return {"access_token": token, "token_type": "bearer", "expires_in": 86400}
+        result = authentication.login(payload.username, payload.password)
+        claims = authentication.authenticate(result["access_token"])
+        accounts.ensure_patient(claims["sub"], claims.get("username", payload.username))
+        return result
 
     @app.delete("/sessions", status_code=204)
     def signout(credentials: HTTPAuthorizationCredentials = Depends(bearer), user_id=Depends(user)):
-        accounts.logout(credentials.credentials)
+        authentication.logout(credentials.credentials)
 
     @app.get("/me")
-    def me(user_id=Depends(user)):
-        username = accounts.username(user_id)
-        return {"username": username, "admin": bool(admin) and username == admin[0].casefold()}
+    def me(claims=Depends(identity)):
+        # Supports tokens obtained directly from Cognito as well as /sessions.
+        username = claims.get("username", claims["sub"])
+        accounts.ensure_patient(claims["sub"], username)
+        return {"username": username, "admin": False}
 
     @app.get("/history")
     def status(user_id=Depends(user)):
@@ -306,6 +306,7 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
             raise HTTPException(413, "CSV must be at most 10 MB")
         try:
             raw = validate_history(pd.read_csv(io.BytesIO(content), dtype="string"))
+            accounts.ensure_patient(user_id, accounts.username(user_id) or user_id)
             saved, revision = accounts.history(user_id)
             if saved:
                 old = validate_history(pd.read_csv(io.StringIO(saved), dtype="string"))
@@ -359,7 +360,8 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
         """Model forecast plus the patient's sugar response (which the model can't see)."""
         result = forecast_meal(ctx["model_raw"], ctx["stamp"], text, ctx["recent"], ctx["bundle"],
                                ctx["treatments"], history=ctx["raw"])
-        return personal.add_sugar(result, text, ctx["foods"], ctx["me"])
+        result = personal.add_sugar(result, text, ctx["foods"], ctx["me"])
+        return summarize_prediction(result, ctx["raw"], ctx["recent"], text)
 
     @app.post("/predict")
     def prediction(payload: MealRequest, user_id=Depends(user)):
@@ -382,7 +384,7 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
     def confirmed_meals(user_id=Depends(user)):
         """Meals the user confirmed eating, each with the forecast made at that time."""
         keys = ["meal_time", "day", "dietary_intake", "medication", "baseline_glucose", "personalized", "predictions",
-                "spike", "meal_effect", "sugar_adjustment"]
+                "spike", "meal_effect", "sugar_adjustment", "uncertainty", "explanation"]
         saved = accounts.forecasts(user_id, model_bundle()["version"])
         return {"meals": sorted(({k: m.get(k) for k in keys} for m in saved), key=lambda m: m["meal_time"])}
 
@@ -399,6 +401,7 @@ def create_app(state_dir=None, model_path=None, allow_signup=None, admin=None,
                 result = forecast(ctx, option["dietary_intake"])
                 spike = assess(result, option["dietary_intake"], limits)
                 rows.append({**option, "spike": spike, "predictions": result["predictions"],
+                             "uncertainty": result["uncertainty"], "explanation": result["explanation"],
                              "peak_change_mg_dl": spike["peak_glucose_mg_dl"] - original["peak_glucose_mg_dl"]})
         except ValueError as exc:
             raise HTTPException(422, str(exc))

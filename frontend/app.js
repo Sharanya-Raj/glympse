@@ -277,10 +277,12 @@
 
   async function signIn(form) {
     const username = form.username.value.trim(), password = form.password.value;
+    const confirmation = form.confirmation.value.trim();
     if (!/^[a-zA-Z0-9_.@-]{3,80}$/.test(username)) { S.signinError = 'Enter your username (letters, numbers, . _ @ -).'; return render(); }
     if (!password) { S.signinError = 'Enter your password.'; return render(); }
     S.signinBusy = true; S.signinError = null; render();
     try {
+      if (confirmation) await api.confirmAccount(username, confirmation);
       await api.signIn(username, password);
       S.user = username; store.set('glyimpse_user', username);
       S.signinBusy = false; S.tab = 'today';
@@ -606,6 +608,8 @@
       <input id="gl-pw" name="password" type="${S.pwShown ? 'text' : 'password'}" autocomplete="current-password" placeholder="Your password" required>
       <button type="button" data-action="toggle-pw" aria-label="${S.pwShown ? 'Hide password' : 'Show password'}">${icon(IC.eye)}</button>
     </div>
+    <label for="gl-confirm" class="signin-label">Confirmation code (only for a new, unconfirmed account)</label>
+    <div class="field-box"><input id="gl-confirm" name="confirmation" autocomplete="one-time-code" placeholder="Leave blank after confirmation"></div>
     ${(S.health?.example_users || []).length ? `
     <p class="hint">Try a patient example with preloaded glucose history and meals. Select an account, then enter its example password.</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
@@ -775,6 +779,39 @@
   </div></main>`;
   }
 
+  function predictionEvidence(result) {
+    const evidence = result.uncertainty, explanation = result.explanation;
+    if (!evidence || !explanation) return '<p class="meta">Prediction confidence has not been calibrated. Evidence details are unavailable for this saved prediction.</p>';
+    const factors = explanation.top_factors || [];
+    const boxes = Array.from({ length: 3 }, (_, i) => {
+      const factor = factors[i];
+      if (!factor) return '<div class="card" style="padding:16px"><strong>No additional factor</strong><p class="meta">No further nonzero model contribution.</p></div>';
+      const amount = factor.contribution_mg_dl;
+      return `<div class="card" style="padding:16px;min-width:0">
+        <div class="eyebrow-sm">Factor ${i + 1}</div><strong>${esc(factor.label)}</strong>
+        <p style="margin:8px 0;font-size:1.2rem">${amount >= 0 ? '+' : '&minus;'}${Math.abs(amount).toFixed(1)} <small>mg/dL</small></p>
+        <p class="meta">${amount >= 0 ? 'Raises' : 'Lowers'} the peak prediction relative to the model reference.</p>
+      </div>`;
+    }).join('');
+    return `<section aria-label="Prediction uncertainty" style="margin-top:18px">
+      <div class="eyebrow-sm">How much evidence supports this estimate?</div>
+      <strong>${esc(evidence.label)}</strong>
+      <p class="meta">${evidence.cgm_coverage_percent.toFixed(1)}% of five-minute CGM slots are present across the seven training days. This measures data coverage, not prediction accuracy.</p>
+      <p class="meta">Statistical confidence is not calibrated. More gaps mean less supporting information; even zero gaps would not guarantee an accurate forecast.</p>
+      <details><summary>See missing information and daily coverage</summary>
+        <ul>${evidence.checks.map(check => `<li><b>${esc(check.category)}: ${check.gap ? 'gap / unknown' : 'check met'}</b><br>${esc(check.detail)}</li>`).join('')}</ul>
+        <div style="overflow-x:auto"><table><thead><tr><th>24-hour block starting</th><th>CGM coverage</th><th>Meals logged</th><th>Medication entries</th></tr></thead>
+        <tbody>${evidence.daily.map(day => `<tr><td>${esc(day.start.replace('T', ' '))} UTC</td><td>${day.cgm_coverage_percent.toFixed(1)}%</td><td>${day.recorded_meal_events}</td><td>${day.medication_entries} (completeness unknown)</td></tr>`).join('')}</tbody></table></div>
+        <ul>${evidence.limitations.map(note => `<li>${esc(note)}</li>`).join('')}</ul>
+      </details>
+    </section>
+    <section aria-label="Top three prediction factors" style="margin-top:20px">
+      <div class="eyebrow-sm">What moved your predicted peak most (+${explanation.horizon_minutes} min)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:10px">${boxes}</div>
+      <p class="meta">Based on this patient's inputs and fitted personal correction when available. These are model contributions, not proven causes or changes from starting glucose. Activity is not modeled. Sugar adjustment, if shown, is a separate existing rule.</p>
+    </section>`;
+  }
+
   function predictionCard() {
     if (S.predBusy) return `<div class="info pulse" role="status">Checking this meal against your first 7 days…</div>`;
     if (S.predError) return errorBox(S.predError);
@@ -783,7 +820,7 @@
     const cls = F.level === 'high' ? ' spike' : F.level === 'moderate' ? ' moderate' : '';
     const recent = r.recent_cgm || [];
     const lastRecent = recent[recent.length - 1];
-    const top = (F.peak.top || []).map(f => `<li><span>${esc(featureName(f.feature))}</span><b class="${f.contribution_mg_dl > 0 ? 'up' : 'down'}">${f.contribution_mg_dl > 0 ? '+' : '−'}${Math.abs(f.contribution_mg_dl).toFixed(0)} mg/dL</b></li>`).join('');
+
     const med = medicationText(r.medication);
     return `<div class="pred${cls}" role="status">
   <div class="eyebrow-sm">What if · ${r.personalized ? `personalized from ${r.personal_training_meals} of your meals` : 'population model (fewer than 5 usable meals in your last 7 days)'}</div>
@@ -795,8 +832,7 @@
   ${horizonTiles(F)}
   <p class="peak">${esc(peakText(F))}</p>
   <p class="meta">Starting point: ${recent.length} CGM readings from your history${lastRecent ? `, latest ${round(lastRecent.glucose)} mg/dL at ${clock(ms(lastRecent.timestamp))}` : ''}. Day ${r.day} of your recording.</p>
-  ${top ? `<div class="eyebrow-sm" style="margin-top:14px">What moved this forecast most at +${F.peak.min} min</div><ul class="drivers">${top}</ul>` : ''}
-  <p class="meta" style="margin-top:10px">These show how the model reached its number, not proven causes.</p>
+  ${predictionEvidence(r)}
   <p data-stale class="meta" hidden style="color:var(--yellow)">You changed the meal; check the forecast again before confirming.</p>
 </div>${alternativesCard(F)}`;
   }

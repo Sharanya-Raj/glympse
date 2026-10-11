@@ -8,6 +8,12 @@ import joblib
 import numpy as np
 import pandas as pd
 from pydantic import ValidationError
+from unittest.mock import patch
+import os
+import boto3
+from moto import mock_aws
+from fastapi import HTTPException
+from .accounts import Accounts
 
 from .app import create_app
 from .ml.model import fit_population, meal_examples
@@ -51,22 +57,39 @@ def fixture(patient="1", days=9):
 class ApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cohort = pd.concat([fixture("other1", 7), fixture("other2", 7)], ignore_index=True)
-        examples, features, _ = meal_examples(prepared_history(cohort))
-        model, _ = fit_population(examples, features, None)
-        cls.bundle = {"model": model, "features": features, "schema": 1, "version": "test"}
+        # Exercise the existing artifact; never train or replace it in API tests.
+        cls.bundle = joblib.load(Path(__file__).parent / "artifacts/population.joblib")
+
+    def setUp(self):
+        env = patch.dict(os.environ, {"AWS_ACCESS_KEY_ID": "testing", "AWS_SECRET_ACCESS_KEY": "testing", "AWS_DEFAULT_REGION": "us-west-2"})
+        env.start(); self.addCleanup(env.stop)
+        aws = mock_aws(); aws.start(); self.addCleanup(aws.stop)
+        resource = boto3.resource("dynamodb", region_name="us-west-2")
+        for name, keys in (("glympse-patients", ["patient_id"]), ("glympse-meals", ["patient_id", "meal_id"])):
+            resource.create_table(TableName=name, BillingMode="PAY_PER_REQUEST", KeySchema=[{"AttributeName": k, "KeyType": "HASH" if i == 0 else "RANGE"} for i,k in enumerate(keys)], AttributeDefinitions=[{"AttributeName": k, "AttributeType": "S"} for k in keys])
+        self.storage = Accounts(resource)
+        class Auth:
+            def __init__(self): self.users = {}
+            def signup(self, username, password):
+                self.users[username] = password
+                return {"user_id": username, "confirmed": True}
+            def login(self, username, password):
+                if self.users.get(username) != password: raise HTTPException(401)
+                return {"access_token": username, "expires_in": 3600, "token_type": "bearer"}
+            def authenticate(self, token):
+                if token not in self.users: raise HTTPException(401)
+                return {"sub": token, "username": token}
+        self.auth = Auth()
 
     def make_client(self, directory, **options):
-        path = Path(directory)
-        artifact = path / "population.joblib"
-        joblib.dump(self.bundle, artifact)
         options.setdefault("frontend_dir", "")
         options.setdefault("seed_recordings", [])
         options.setdefault("admin", ())
-        return ApiClient(create_app(path, artifact, **options))
+        return ApiClient(create_app(model_path=Path(__file__).parent / "artifacts/population.joblib", storage=self.storage, auth=self.auth, **options))
 
     def signed_up(self, client, username="alice"):
-        response = client.post("/accounts", json={"username": username, "password": "test-password-123"})
+        client.post("/accounts", json={"username": username, "password": "test-password-123"})
+        response = client.post("/sessions", json={"username": username, "password": "test-password-123"})
         return {"Authorization": "Bearer " + response.json()["access_token"]}
 
     @staticmethod
@@ -80,9 +103,9 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(client.get("/health").json()["signup_open"], True)
             first = client.post("/accounts", json={"username": "alice", "password": "test-password-123"})
             self.assertEqual(first.status_code, 201)
-            headers = {"Authorization": "Bearer " + first.json()["access_token"]}
+            headers = {"Authorization": "Bearer " + client.post("/sessions", json={"username": "alice", "password": "test-password-123"}).json()["access_token"]}
             second = client.post("/accounts", json={"username": "bob", "password": "test-password-456"})
-            other_headers = {"Authorization": "Bearer " + second.json()["access_token"]}
+            other_headers = {"Authorization": "Bearer " + client.post("/sessions", json={"username": "bob", "password": "test-password-456"}).json()["access_token"]}
             self.assertEqual(client.get("/history", headers=other_headers).status_code, 409)
             self.assertEqual(client.get("/history").status_code, 401)
             raw = fixture(days=9)
@@ -122,25 +145,6 @@ class ApiTests(unittest.TestCase):
                    for t in pd.date_range("2025-01-09 07:30", periods=7, freq="5min")]
         self.assertEqual(forecast_meal(raw, "2025-01-09 08:00", "Rice 100 g", request, self.bundle)["day"], 9)
 
-    def test_admin_only_login_signout_and_rekey(self):
-        with tempfile.TemporaryDirectory() as directory:
-            client = self.make_client(directory, admin=("Glympse", "admin-password-123"), allow_signup=False)
-            blocked = client.post("/accounts", json={"username": "mallory", "password": "test-password-123"})
-            self.assertEqual(blocked.status_code, 403)
-            self.assertEqual(client.post("/sessions", json={"username": "Glympse", "password": "wrong-password-1"}).status_code, 401)
-            login = client.post("/sessions", json={"username": "Glympse", "password": "admin-password-123"})
-            headers = {"Authorization": "Bearer " + login.json()["access_token"]}
-            self.assertEqual(client.get("/me", headers=headers).json(), {"username": "glympse", "admin": True})
-            self.assertEqual(client.request("DELETE", "/sessions", headers=headers).status_code, 204)
-            self.assertEqual(client.get("/me", headers=headers).status_code, 401)
-            # Restarting with a new configured password re-keys the account and ends its sessions.
-            login = client.post("/sessions", json={"username": "Glympse", "password": "admin-password-123"})
-            old = {"Authorization": "Bearer " + login.json()["access_token"]}
-            restarted = self.make_client(directory, admin=("Glympse", "new-admin-password-1"))
-            self.assertEqual(restarted.get("/me", headers=old).status_code, 401)
-            self.assertEqual(restarted.post("/sessions", json={"username": "glympse", "password": "admin-password-123"}).status_code, 401)
-            self.assertEqual(restarted.post("/sessions", json={"username": "glympse", "password": "new-admin-password-1"}).status_code, 200)
-
     def test_predict_takes_recent_cgm_from_uploaded_history(self):
         with tempfile.TemporaryDirectory() as directory:
             client = self.make_client(directory, allow_signup=True)
@@ -166,46 +170,6 @@ class ApiTests(unittest.TestCase):
             self.assertIn("live clock is at Jan 09 23:55", missing.json()["detail"])
             other = self.signed_up(client, "bob")
             self.assertEqual(client.get("/history/readings", headers=other).status_code, 409)
-
-    def test_dev_admin_may_use_short_password_only_in_dev(self):
-        with tempfile.TemporaryDirectory() as directory:
-            client = self.make_client(directory, admin=("admin@12345", "dev123"), dev=True)
-            login = client.post("/sessions", json={"username": "admin@12345", "password": "dev123"})
-            self.assertEqual(login.status_code, 200, login.text)
-            self.assertEqual(client.post("/sessions", json={"username": "admin@12345", "password": "dev124"}).status_code, 401)
-            with self.assertRaises(ValidationError):
-                self.make_client(directory, admin=("admin@12345", "dev123"), dev=False)
-
-    def test_dev_seeds_patient_accounts_from_dataset_workbooks(self):
-        with tempfile.TemporaryDirectory() as directory:
-            data = Path(directory) / "data"
-            data.mkdir()
-            workbook = fixture(days=8)
-            workbook["Date"] = workbook.Date.dt.strftime("%Y-%m-%d %H:%M:%S")
-            workbook.drop(columns=["Patient", "Recording"]).to_excel(data / "9001_0_20250101.xlsx", index=False)
-            workbook.drop(columns=["Patient", "Recording"]).to_excel(data / "9002_0_20250101.xlsx", index=False)
-            seeded = dict(seed_recordings=["9001_0_20250101", "9002_0_20250101:own-pass"],
-                          seed_password="dev123", data_dir=str(data))
-            client = self.make_client(directory, dev=True, **seeded)
-            self.assertEqual(client.get("/health").json()["example_users"], ["patient9001", "patient9002"])
-            self.assertNotIn("dev123", client.get("/health").text)
-            self.assertNotIn("own-pass", client.get("/health").text)
-            own = client.post("/sessions", json={"username": "patient9002", "password": "own-pass"})
-            self.assertEqual(own.status_code, 200, own.text)
-            self.assertEqual(client.post("/sessions", json={"username": "patient9002", "password": "dev123"}).status_code, 401)
-            login = client.post("/sessions", json={"username": "patient9001", "password": "dev123"})
-            self.assertEqual(login.status_code, 200, login.text)
-            headers = {"Authorization": "Bearer " + login.json()["access_token"]}
-            status = client.get("/history", headers=headers).json()
-            self.assertEqual((status["rows"], status["ready_for_day8"], status["revision"]), (8 * 288, True, 1))
-            self.assertEqual(client.get("/me", headers=headers).json(), {"username": "patient9001", "admin": False})
-            # Restarting doesn't reload or overwrite an account that already has history.
-            again = self.make_client(directory, dev=True, **seeded)
-            self.assertEqual(again.get("/history", headers=headers).json()["revision"], 1)
-            with self.assertRaises(RuntimeError):
-                self.make_client(directory, dev=False, **seeded)
-            production = self.make_client(directory, dev=False)
-            self.assertEqual(production.get("/health").json()["example_users"], [])
 
     def test_spike_assessment_and_what_if_alternatives(self):
         with tempfile.TemporaryDirectory() as directory:
