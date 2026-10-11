@@ -1,5 +1,7 @@
 **Website:** [https://main.d37tns3udtrqqd.amplifyapp.com/](https://main.d37tns3udtrqqd.amplifyapp.com/)
-# Glympse Backend
+**Demo Login:**
+* **Username:** `sharanyaraj24@gmail.com`
+* **Password:** `@Test123Permanent!`
 
 Glympse predicts how a person's glucose will respond to a meal **before** they eat it.
 The backend learns from the first seven days of a user's continuous glucose monitor
